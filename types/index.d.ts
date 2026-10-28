@@ -8,7 +8,7 @@ export type ChatMessage = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'team-chat': {
+    'claude-team-chat': {
       room: string
       epoch: string
       messages: ChatMessage[]
@@ -17,6 +17,7 @@ declare module 'claude-code' {
       isOpen: boolean
       problem: string
       sent: number
+      me: string
     }
   }
 }

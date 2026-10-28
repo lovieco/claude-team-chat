@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// team-chat relay: rooms behind 4-character codes, messages and presence over
+// claude-team-chat relay: rooms behind 4-character codes, messages and presence over
 // plain HTTP. No dependencies.
 //
 //   PORT=47800 CHAT_TOKEN=some-secret node relay.mjs
@@ -174,6 +174,6 @@ setInterval(() => {
 
 server.listen(PORT, HOST, () => {
   console.log(
-    `team-chat relay on http://${HOST}:${PORT}${TOKEN ? ' (a token is needed to make rooms)' : ' (anyone who can reach it can make rooms)'}`,
+    `claude-team-chat relay on http://${HOST}:${PORT}${TOKEN ? ' (a token is needed to make rooms)' : ' (anyone who can reach it can make rooms)'}`,
   )
 })

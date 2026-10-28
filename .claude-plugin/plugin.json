@@ -1,5 +1,5 @@
 {
-  "name": "team-chat",
+  "name": "claude-team-chat",
   "version": "0.1.0",
   "description": "Chat with other Claude Code users in rooms joined by a 4-character code: a chat pane, /chat, and tools Claude can use to read and send messages.",
   "types": "./types/index.d.ts",
@@ -7,13 +7,13 @@
     "server": {
       "type": "string",
       "title": "Relay server URL",
-      "description": "The team-chat relay everyone in the room connects to, e.g. https://chat.example.com or http://192.168.1.20:47800",
+      "description": "The claude-team-chat relay everyone in the room connects to, e.g. https://chat.example.com or http://192.168.1.20:47800",
       "default": "http://localhost:47800"
     },
     "name": {
       "type": "string",
       "title": "Display name",
-      "description": "The name others see. Empty uses your login name.",
+      "description": "The name others see. Empty uses your login name. /chat name <new name> changes it any time.",
       "default": ""
     },
     "room": {
