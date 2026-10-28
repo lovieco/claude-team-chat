@@ -103,6 +103,23 @@ describe('team-chat', () => {
     ])
   })
 
+  test('/chat invite gives the install line, the join command and the relay', { options: OPTIONS }, async ($, on) => {
+    fakeRelay(on)
+    engine(on)
+    await $.session.start(START)
+
+    expect((await $.command.run(chat('invite'))).text).toContain('Not in a room yet')
+    await $.command.run(chat('new'))
+    expect((await $.command.run(chat('invite'))).text).toBe(
+      [
+        'Join my Claude Code chat room: Ab3x',
+        '1. Install the plugin once: /plugin install team-chat --marketplace lovieco/claude-team-chat',
+        '2. Join the room: /chat join Ab3x  (capitals matter)',
+        "Relay: set the plugin's server option to http://relay.test",
+      ].join('\n'),
+    )
+  })
+
   test('codes are case-sensitive, and a wrong one keeps you where you are', { options: OPTIONS }, async ($, on) => {
     const relay = fakeRelay(on)
     engine(on)
@@ -170,7 +187,16 @@ describe('team-chat', () => {
   test('the pane shows the code, the messages and a composer that sends', { options: OPTIONS }, async ($, on) => {
     const relay = fakeRelay(on)
     const seen = engine(on)
+    const pbcopy: string[] = []
     on('ui.focus', () => ({}))
+    // The terminal has a clipboard here; the desktop surface does not, so the Mac's is used.
+    on('ui.copy', ($, e) => ({
+      value: e.surface === 'terminal' ? { isCopied: true as const } : { isCopied: false as const, reason: 'no-clipboard' as const },
+    }))
+    on('process.run', ($, e) => {
+      pbcopy.push(`${e.argv.join(' ')}: ${e.init?.stdin ?? ''}`)
+      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
     await $.session.start(START)
     const pane = {
       plugin: 'team-chat',
@@ -199,6 +225,10 @@ describe('team-chat', () => {
       const ui = await $.ui.mount({ ...pane, surface })
       expect((await ui.find({ key: 'header' }))?.text).toBe('Room Ab3x  2 online: ana, bo')
       expect((await ui.find({ text: /morning/ }))?.text).toContain('bo')
+      expect((await ui.find({ key: 'invite' }))?.text).toContain('/chat join Ab3x')
+      await ui.press({ key: 'copy-invite' })
+      expect(seen.toasts.at(-1)).toBe('Invite copied. Paste it to your friend.')
+      expect(pbcopy.length).toBe(surface === 'terminal' ? 0 : 1)
       const field = await ui.find({ type: 'Input' })
       expect(field?.key).toMatch(/^compose-/)
       await ui.input({ key: field!.key!, text: `hi from ${surface}` })

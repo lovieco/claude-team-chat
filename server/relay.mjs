@@ -22,7 +22,7 @@ import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 const PORT = Number(process.env.PORT ?? 47800)
 const HOST = process.env.HOST ?? '0.0.0.0'
 const TOKEN = process.env.CHAT_TOKEN ?? ''
-const TRUST_PROXY = process.env.TRUST_PROXY === '1' // read the client address from X-Forwarded-For
+const TRUST_PROXY = process.env.TRUST_PROXY === '1' // behind a proxy or tunnel: read the visitor's address from its headers
 const EPOCH = randomUUID()
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -45,7 +45,13 @@ const rooms = new Map()
 const clients = new Map()
 
 function clientOf(req) {
-  const forwarded = TRUST_PROXY ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : ''
+  // Cloudflare sets CF-Connecting-IP itself; otherwise the last X-Forwarded-For
+  // entry is the one the nearest proxy added (earlier ones are the visitor's word).
+  const forwarded = TRUST_PROXY
+    ? String(req.headers['cf-connecting-ip'] ?? '').trim() ||
+      String(req.headers['x-forwarded-for'] ?? '').split(',').at(-1)?.trim() ||
+      ''
+    : ''
   const address = forwarded || req.socket.remoteAddress || 'unknown'
   let client = clients.get(address)
   if (!client) {

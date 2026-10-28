@@ -44,7 +44,7 @@ Everyone must be able to reach it:
 - Tailscale: share `http://<machine>.<tailnet>.ts.net:47800`
 - Anywhere: put it behind a tunnel (`cloudflared tunnel --url http://localhost:47800`) or deploy it to any Node host, and share the https URL
 
-`CHAT_TOKEN` controls who can make rooms; joining needs only the code. Without it, anyone who can reach the relay can make rooms. Behind a proxy or tunnel, set `TRUST_PROXY=1` so the wrong-code limit counts each visitor's own address.
+`CHAT_TOKEN` controls who can make rooms; joining needs only the code. Without it, anyone who can reach the relay can make rooms. Behind a proxy or tunnel (such as `cloudflared`), set `TRUST_PROXY=1` so the wrong-code limit counts each visitor's own address. Leave it off when the relay is reached directly.
 
 ## 2. Configure the plugin (everyone)
 
@@ -63,6 +63,7 @@ Installing the plugin shows a screen for its options. To change them later, use 
 /chat                  open the chat pane (type in it, Enter sends)
 /chat new              make a room and get its code to share
 /chat join Ab3x        join a room by its code (capitals matter)
+/chat invite           the invite to send a friend (the pane has a Copy invite button too)
 /chat hello everyone   send a message
 /chat say who          send a message that starts with a command word
 /chat who              who is online
