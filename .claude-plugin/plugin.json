@@ -1,0 +1,33 @@
+{
+  "name": "team-chat",
+  "version": "0.1.0",
+  "description": "Chat with other Claude Code users in rooms joined by a 4-character code: a chat pane, /chat, and tools Claude can use to read and send messages.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "server": {
+      "type": "string",
+      "title": "Relay server URL",
+      "description": "The team-chat relay everyone in the room connects to, e.g. https://chat.example.com or http://192.168.1.20:47800",
+      "default": "http://localhost:47800"
+    },
+    "name": {
+      "type": "string",
+      "title": "Display name",
+      "description": "The name others see. Empty uses your login name.",
+      "default": ""
+    },
+    "room": {
+      "type": "string",
+      "title": "Room code to start in",
+      "description": "A 4-character room code (A-Z, a-z, 0-9; capitals matter) to join at start. Empty: none until /chat new or /chat join <code>.",
+      "default": ""
+    },
+    "token": {
+      "type": "string",
+      "title": "Relay token",
+      "description": "The CHAT_TOKEN set on the relay, needed to make rooms with /chat new. Empty when the relay has none.",
+      "default": "",
+      "sensitive": true
+    }
+  }
+}
