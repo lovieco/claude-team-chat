@@ -404,8 +404,10 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
     const { Markdown } = $.ui.resolve(e)
     const hrefs = acts.map(act => `${ACTION_LINK}${act.id}`)
     actions = [
+      // dim, so the links read as quiet text rather than in the app's link color
       <Markdown
         key="chat-actions"
+        dimColor
         text={acts.map((act, i) => `[${act.label}](${hrefs[i]})`).join(' · ')}
         pressableLinks={hrefs}
         onLinkPress={(link, press) => {
