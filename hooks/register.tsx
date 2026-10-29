@@ -27,7 +27,6 @@ const problem = atom({ plugin: 'claude-team-chat', key: 'problem' } as const, ''
 const sent = atom({ plugin: 'claude-team-chat', key: 'sent' } as const, 0)
 const nickname = atom({ plugin: 'claude-team-chat', key: 'me' } as const, '')
 const menuOpen = atom({ plugin: 'claude-team-chat', key: 'menuOpen' } as const, false)
-const minimized = atom({ plugin: 'claude-team-chat', key: 'minimized' } as const, false)
 const notice = atom({ plugin: 'claude-team-chat', key: 'notice' } as const, '')
 
 const HELP = [
@@ -105,7 +104,6 @@ export const register: Register = (on, options) => {
     }
 
     $.ui.status(undefined) // the clickable bar above the prompt shows the room now
-    if ((await $.store.get('minimized')) === true) await update($, minimized, () => true)
 
     await $.command.register({
       name: 'chat',
@@ -255,38 +253,43 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const [isMenu, where, list, isPaneOpen, isSmall, said] = await Promise.all([
+    const [isOpenBar, where, list, isPaneOpen, said] = await Promise.all([
       read($, menuOpen),
       read($, room),
       read($, messages),
       read($, isOpen),
-      read($, minimized),
       read($, notice),
     ])
-    // Minimized, the whole bar folds to the room's status on the right, with + to unfold.
-    if (where && isSmall) {
+    // One control: the room's status with an arrow. Collapsed (▴), it is all there is;
+    // opened (▾), the latest message, a reply box and the actions come with it.
+    const status = (
+      <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
+        {await barText($)} <Text dimColor>{isOpenBar ? '▾' : '▴'}</Text>
+      </Button>
+    )
+    const noticeRow = said ? (
+      <Box key="chat-notice" flexDirection="row" alignItems="center" columnGap="sm">
+        <Box flexGrow={1} flexShrink={1}>
+          <Text wrap="wrap">{said}</Text>
+        </Box>
+        <Button key="chat-notice-close" plain label="×" onPress={() => void update($, notice, () => '')} />
+      </Box>
+    ) : null
+    if (!isOpenBar) {
       return (
-        <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1}>
-          <Button key="chat-bar" plain onPress={() => void setMinimized($, false)}>
-            {await barText($)}
-          </Button>
-          <Button key="chat-minimize" plain label="+" onPress={() => void setMinimized($, false)} />
+        <Box flexDirection="column" rowGap={said ? 'sm' : undefined}>
+          {noticeRow}
+          <Box flexDirection="row" alignItems="center" justifyContent="flex-end">
+            {status}
+          </Box>
         </Box>
       )
     }
-    // One line: the latest message (while the pane, which shows them all, is closed),
-    // then the room, then − to fold it all away.
+    // The latest message shows unless the pane, which shows them all, is open.
     const last = where && !isPaneOpen ? list.at(-1) : undefined
     return (
-      <Box flexDirection="column" rowGap={isMenu || said ? 'sm' : undefined}>
-        {said ? (
-          <Box key="chat-notice" flexDirection="row" alignItems="center" columnGap="sm">
-            <Box flexGrow={1} flexShrink={1}>
-              <Text wrap="wrap">{said}</Text>
-            </Box>
-            <Button key="chat-notice-close" plain label="×" onPress={() => void update($, notice, () => '')} />
-          </Box>
-        ) : null}
+      <Box flexDirection="column" rowGap="sm">
+        {noticeRow}
         <Box flexDirection="row" alignItems="center" columnGap={1}>
           <Box flexGrow={1} flexShrink={1}>
             {last ? (
@@ -302,12 +305,9 @@ export const register: Register = (on, options) => {
               </Box>
             ) : null}
           </Box>
-          <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
-            {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
-          </Button>
-          {where ? <Button key="chat-minimize" plain label="−" onPress={() => void setMinimized($, true)} /> : null}
+          {status}
         </Box>
-        {isMenu ? await menuItems($, e) : null}
+        {await menuItems($, e)}
       </Box>
     )
   })
@@ -398,14 +398,14 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
       ? [link]
       : [
           <Text key={`dot-${i}`} dimColor size="footnote">
-            ·
+            {' · '}
           </Text>,
           link,
         ],
   )
   if (e.surface === 'mobile') {
     return (
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap="sm">
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap={0}>
         {actions}
       </Box>
     )
@@ -418,8 +418,8 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   return (
     <Box flexDirection="column" rowGap="xs">
       {where && (
-        <Box flexDirection="column" width="100%">
-          <Box flexDirection="column" width="100%">
+        <Box flexDirection="row">
+          <Box flexDirection="column" flexGrow={1} width={Math.max(24, (e.props.bodyColumns || 80) - 12)}>
             <Input
               key={`chat-reply-${count}`}
               placeholder={lastFromOthers ? `Reply to ${lastFromOthers.from}…` : `Message room ${codeOf(where)}…`}
@@ -430,7 +430,7 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
           </Box>
         </Box>
       )}
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap="sm">
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap={0}>
         {actions}
         {!where && <Text dimColor>or</Text>}
         {!where && (
@@ -768,12 +768,6 @@ async function whoFromMenu($: $) {
 async function say($: $, text: string) {
   await update($, notice, () => text)
   $.clock.after(NOTICE_MS, () => void update($, notice, now => (now === text ? '' : now)))
-}
-
-async function setMinimized($: $, value: boolean) {
-  if (value) await update($, menuOpen, () => false)
-  await update($, minimized, () => value)
-  await $.store.set('minimized', value)
 }
 
 async function relayFromMenu($: $, value: string) {

@@ -215,7 +215,7 @@ describe('claude-team-chat', () => {
     expect(inside.description).toBe(`Room ${CODE} as ana  ·  2 online`)
   })
 
-  test('the bar is one line: the latest message, the room, and − folds it all away', { options: OPTIONS }, async ($, on) => {
+  test('one arrow: collapsed it is the room alone, opened it adds the message, reply box and actions', { options: OPTIONS }, async ($, on) => {
     const relay = fakeRelay(on)
     engine(on)
     await $.session.start(START)
@@ -224,28 +224,27 @@ describe('claude-team-chat', () => {
     await $.command.run(chat('who'))
 
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-    expect((await ui.find({ key: 'chat-last' }))?.text).toMatch(/bo: three$/)
-    expect(await ui.find({ text: /bo: two/ })).toBeUndefined()
-    expect((await ui.find({ key: 'chat-minimize' }))?.text).toBe('−')
-
-    // − with the menu open folds everything: message, menu and reply box
-    await ui.press({ key: 'chat-bar' })
-    expect(await ui.find({ type: 'Input' })).toBeDefined()
-    await ui.press({ key: 'chat-minimize' })
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online · 3 new ▴`)
     expect(await ui.find({ key: 'chat-last' })).toBeUndefined()
     expect(await ui.find({ type: 'Input' })).toBeUndefined()
-    expect(await ui.find({ key: 'chat-open' })).toBeUndefined()
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online · 3 new`)
-    expect((await ui.find({ key: 'chat-minimize' }))?.text).toBe('+')
+    expect(await ui.find({ key: 'chat-minimize' })).toBeUndefined()
 
-    // + (or the status) unfolds it, menu closed
-    await ui.press({ key: 'chat-minimize' })
+    await ui.press({ key: 'chat-bar' })
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online · 3 new ▾`)
     expect((await ui.find({ key: 'chat-last' }))?.text).toMatch(/bo: three$/)
+    expect(await ui.find({ text: /bo: two/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Input' })).toBeDefined()
+    expect(await ui.find({ key: 'chat-open' })).toBeDefined()
+
+    await ui.press({ key: 'chat-bar' })
+    expect(await ui.find({ key: 'chat-last' })).toBeUndefined()
     expect(await ui.find({ key: 'chat-open' })).toBeUndefined()
     await ui.unmount()
 
+    // with the pane open, the bar leaves the message to the pane
     await $.command.run(chat(''))
     const withPane = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await withPane.press({ key: 'chat-bar' })
     expect(await withPane.find({ key: 'chat-last' })).toBeUndefined()
     await withPane.unmount()
   })
@@ -257,8 +256,7 @@ describe('claude-team-chat', () => {
     await $.session.start(START)
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▾')
-    expect(await ui.find({ key: 'chat-minimize' })).toBeUndefined()
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▴')
     await ui.press({ key: 'chat-bar' })
     expect(await ui.find({ key: 'chat-join' })).toBeDefined()
 
@@ -267,7 +265,7 @@ describe('claude-team-chat', () => {
     expect(await noticeOf($)).toBe('Invite copied. Paste it to your friend.')
     expect((await ui.find({ key: 'chat-notice' }))?.text).toContain('Invite copied.')
     expect(seen.opened).toEqual(['claude-team-chat'])
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▾`)
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▴`)
 
     await ui.press({ key: 'chat-bar' })
     const order = (await ui.findAll({ type: 'Button' })).map(b => b.key).filter(k => k !== 'chat-bar' && k !== 'chat-minimize' && k !== 'chat-notice-close')
@@ -278,7 +276,7 @@ describe('claude-team-chat', () => {
     await ui.press({ key: 'chat-bar' })
     await ui.press({ key: 'chat-leave' })
     expect(await noticeOf($)).toBe(`Left room ${CODE}.`)
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▾')
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▴')
 
     await ui.press({ key: 'chat-bar' })
     await ui.input({ key: 'chat-join', text: CODE })
@@ -303,7 +301,7 @@ describe('claude-team-chat', () => {
     await ui.press({ key: 'chat-bar' })
     await ui.input({ key: 'chat-relay', text: LINK })
     expect(await noticeOf($)).toBe(`Using the relay at ${LINK}.`)
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▾`)
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▴`)
     await ui.unmount()
   })
 
