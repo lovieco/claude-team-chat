@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 
 type Message = { id: number; from: string; text: string; at: number; via?: 'claude' }
 
@@ -20,6 +21,7 @@ function fakeRelay(on: On, codes: string[] = ['Ab3x', 'Zz9Q']) {
     const method = e.init?.method ?? 'GET'
     hosts.push(url.origin)
     if (url.origin === 'https://down.test') return { deny: 'connection refused' }
+    if (url.origin === 'https://gone.test') return { deny: 'ENOTFOUND: getaddrinfo ENOTFOUND gone.test' }
     if (parts[0] === 'health') return answer(200, { ok: true, epoch: 'e1' })
     if (method === 'POST' && parts.length === 1) {
       const code = codes.shift()!
@@ -74,6 +76,19 @@ function engine(on: On) {
 }
 
 const START = { cwd: '/work', surface: 'terminal' as const, isInteractive: true }
+const BAND = {
+  plugin: 'claude-team-chat',
+  component: 'AbovePrompt' as const,
+  props: { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 100, scroll: { offset: 0, bodyRows: 6 }, view: {} },
+}
+
+// What the bar above the prompt says, without its menu arrow.
+async function bar($: Engine) {
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const text = (await ui.find({ key: 'chat-bar' }))?.text ?? ''
+  await ui.unmount()
+  return text.replace(/ [▾▴]$/, '')
+}
 const chat = (args: string) => ({
   command: 'chat',
   args,
@@ -88,7 +103,7 @@ describe('claude-team-chat', () => {
     await $.session.start(START)
 
     expect((await $.command.run(chat('hello'))).text).toContain('Not in a room yet')
-    expect(seen.statuses.at(-1)).toBe('chat: no room')
+    expect(await bar($)).toBe('chat: no room')
   })
 
   test('/chat new makes a room, joins it and gives the code to share', { options: OPTIONS }, async ($, on) => {
@@ -99,7 +114,7 @@ describe('claude-team-chat', () => {
     const made = await $.command.run(chat('new'))
     expect(made.text).toContain('New room: Ab3x')
     expect(made.text).toContain('/chat join Ab3x')
-    expect(seen.statuses.at(-1)).toBe('chat Ab3x · 2 online')
+    expect(await bar($)).toBe('chat Ab3x · 2 online')
 
     expect((await $.command.run(chat('hello there'))).text).toBe('Sent to room Ab3x.')
     expect(relay.posts).toEqual([
@@ -142,7 +157,7 @@ describe('claude-team-chat', () => {
     relay.make('Ab3x')
 
     expect((await $.command.run(chat('join Ab3x not-a-link'))).text).toContain('is not a relay link')
-    expect((await $.command.run(chat('join Ab3x https://down.test'))).text).toContain("Can't reach the relay at https://down.test")
+    expect((await $.command.run(chat('join Ab3x https://down.test'))).text).toContain("Can't reach the relay at down.test")
     expect((await $.command.run(chat('join Ab3x https://other.test/'))).text).toBe('Joined room Ab3x as ana.')
     await $.command.run(chat('hi'))
     expect(relay.hosts.at(-1)).toBe('https://other.test')
@@ -152,6 +167,142 @@ describe('claude-team-chat', () => {
     expect((await $.command.run(chat('relay reset'))).text).toBe('Relay: http://relay.test, room Ab3x.')
     await $.command.run(chat('who'))
     expect(relay.hosts.at(-1)).toBe('http://relay.test')
+  })
+
+  test('the hint after /chat shows only what works where you are', { options: OPTIONS }, async ($, on) => {
+    fakeRelay(on)
+    engine(on)
+    on('command.describe', ($, e) => ({ description: e.description, argumentHint: e.argumentHint, isHidden: e.isHidden }))
+    await $.session.start(START)
+    const listed = {
+      command: 'chat',
+      description: 'from the registration',
+      argumentHint: 'from the registration',
+      isHidden: false,
+      immediate: false,
+      provider: { plugin: 'claude-team-chat', tier: 'user' as const },
+    }
+
+    const before = await $.command.describe(listed)
+    expect(before.argumentHint).toBe('new  ·  join <code> [link]  ·  name <you>  ·  relay  ·  stop  ·  help')
+    expect(before.description).toBe('from the registration')
+
+    await $.command.run(chat('new'))
+    const inside = await $.command.describe(listed)
+    expect(inside.argumentHint).toBe('<message>  ·  who  ·  read  ·  invite  ·  name <you>  ·  leave  ·  help')
+    expect(inside.description).toBe('Room Ab3x as ana  ·  2 online')
+  })
+
+  test('clicking the bar above the prompt opens a menu that runs the chat', { options: OPTIONS }, async ($, on) => {
+    const relay = fakeRelay(on)
+    const seen = engine(on)
+    on('ui.focus', () => ({}))
+    on('ui.copy', () => ({ value: { isCopied: true as const } }))
+    await $.session.start(START)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▾')
+    expect(await ui.find({ key: 'chat-start' })).toBeUndefined()
+    await ui.press({ key: 'chat-bar' })
+    expect(await ui.find({ key: 'chat-join' })).toBeDefined()
+    expect(await ui.find({ key: 'chat-relay' })).toBeUndefined()
+
+    // Start a new session: a new room, its invite copied, the chat pane open.
+    await ui.press({ key: 'chat-start' })
+    expect(seen.toasts.at(-1)).toBe('Invite copied. Paste it to your friend.')
+    expect(seen.opened).toEqual(['claude-team-chat'])
+    expect(await ui.find({ key: 'chat-start' })).toBeUndefined()
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat Ab3x · 2 online ▾')
+
+    await ui.press({ key: 'chat-bar' })
+    await ui.press({ key: 'chat-who' })
+    expect(seen.toasts.at(-1)).toBe('Online in room Ab3x: ana, bo')
+
+    await ui.press({ key: 'chat-bar' })
+    await ui.press({ key: 'chat-open' })
+    expect(seen.opened).toEqual(['claude-team-chat', 'claude-team-chat'])
+
+    await ui.press({ key: 'chat-bar' })
+    await ui.press({ key: 'chat-leave' })
+    expect(seen.toasts.at(-1)).toBe('Left room Ab3x.')
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▾')
+
+    relay.make('Q7rT')
+    await ui.press({ key: 'chat-bar' })
+    await ui.input({ key: 'chat-join', text: 'Q7rT' })
+    expect(seen.toasts.at(-1)).toBe('Joined room Q7rT as ana.')
+    await ui.unmount()
+
+    const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await desktop.press({ key: 'chat-bar' })
+    expect(await desktop.find({ key: 'chat-invite' })).toBeDefined()
+    await desktop.unmount()
+  })
+
+  test('when the relay link stops answering, the menu takes a new one', { options: { ...OPTIONS, server: 'https://down.test', room: 'Ab3x' } }, async ($, on) => {
+    const relay = fakeRelay(on)
+    const seen = engine(on)
+    relay.make('Ab3x')
+    await $.session.start(START)
+    await $.command.run(chat('who'))
+    expect(await bar($)).toBe("chat Ab3x: can't reach the relay")
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await ui.press({ key: 'chat-bar' })
+    await ui.input({ key: 'chat-relay', text: 'https://other.test' })
+    expect(seen.toasts.at(-1)).toBe('Using the relay at https://other.test.')
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat Ab3x · 2 online ▾')
+    await ui.unmount()
+  })
+
+  test('a dead relay link is said plainly, once, with what to do', { options: { ...OPTIONS, server: 'https://gone.test', room: 'Ab3x' } }, async ($, on) => {
+    fakeRelay(on)
+    const seen = engine(on)
+    on('process.run', () => ({
+      value: { exitCode: 4, stdout: '', stderr: 'Hosting needs cloudflared: brew install cloudflared\n', isStdoutTruncated: false, isStderrTruncated: false },
+    }))
+    await $.session.start(START)
+    await $.command.run(chat('who'))
+    const said = "Can't reach the relay at gone.test: that link no longer exists. Got a new link? Paste it in the chat menu, or /chat relay <link>."
+    expect(seen.toasts.filter(t => t === said)).toHaveLength(1)
+    expect(seen.toasts.some(t => t.includes('claude-team-chat'))).toBe(false)
+    expect((await $.command.run(chat('who'))).text).toBe("Can't reach the relay, so who's in room Ab3x is unknown right now.")
+    // /chat new tries to host here, and says plainly what hosting is missing
+    expect((await $.command.run(chat('new'))).text).toBe('Hosting needs cloudflared: brew install cloudflared')
+  })
+
+  test('Start a new session hosts a relay here when the current one is gone', { options: { ...OPTIONS, server: 'https://gone.test', room: 'Ab3x' } }, async ($, on) => {
+    const relay = fakeRelay(on, ['K7pm', 'Q2rs'])
+    const seen = engine(on)
+    const ran: string[] = []
+    on('ui.focus', () => ({}))
+    on('ui.copy', () => ({ value: { isCopied: true as const } }))
+    on('process.run', ($, e) => {
+      ran.push(e.argv.join(' '))
+      const stdout = e.argv.includes('stop') ? 'stopped\n' : 'https://new.test\n'
+      return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    relay.make('Ab3x')
+    await $.session.start(START)
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await ui.press({ key: 'chat-bar' })
+    expect((await ui.find({ key: 'chat-start' }))?.text).toBe('Start a new session')
+    await ui.press({ key: 'chat-start' })
+    expect(ran).toHaveLength(1)
+    expect(ran[0]).toMatch(/^\/bin\/sh .*\/server\/host\.sh$/)
+    expect(seen.toasts).toContain('Starting a chat relay and public link on this computer…')
+    expect(seen.toasts.at(-1)).toBe('Invite copied. Paste it to your friend.')
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat K7pm · 2 online ▾')
+    expect((await $.command.run(chat('invite'))).text).toContain('/chat join K7pm https://new.test')
+    await ui.unmount()
+
+    // a relay that answers is used as it is: no second host
+    await $.command.run(chat('new'))
+    expect(ran).toHaveLength(1)
+
+    expect((await $.command.run(chat('stop'))).text).toContain('Stopped the relay and public link')
+    expect(ran.at(-1)).toMatch(/host\.sh stop$/)
   })
 
   test('/chat name changes your name and keeps it unique in the room', { options: OPTIONS }, async ($, on) => {
@@ -195,8 +346,8 @@ describe('claude-team-chat', () => {
 
     relay.drop('Ab3x')
     expect((await $.command.run(chat('who'))).text).toContain('Not in a room yet')
-    expect(seen.toasts).toContain('claude-team-chat: room Ab3x no longer exists. /chat new makes another.')
-    expect(seen.statuses.at(-1)).toBe('chat: no room')
+    expect(seen.toasts).toContain('Room Ab3x no longer exists. /chat new makes another.')
+    expect(await bar($)).toBe('chat: no room')
   })
 
   test('a message from someone else counts as unread and shows a toast', { options: OPTIONS }, async ($, on) => {
@@ -209,10 +360,10 @@ describe('claude-team-chat', () => {
     await $.command.run(chat('who'))
 
     expect(seen.toasts).toContain('💬 bo: did the deploy go out?')
-    expect(seen.statuses.at(-1)).toBe('chat Ab3x · 2 online · 1 new')
+    expect(await bar($)).toBe('chat Ab3x · 2 online · 1 new')
     const read = await $.command.run(chat('read'))
     expect(read.text).toContain('bo: did the deploy go out?')
-    expect(seen.statuses.at(-1)).toBe('chat Ab3x · 2 online')
+    expect(await bar($)).toBe('chat Ab3x · 2 online')
   })
 
   test('Claude reads with an untrusted-text note and sends marked as Claude', { options: OPTIONS }, async ($, on) => {

@@ -18,6 +18,7 @@ declare module 'claude-code' {
       problem: string
       sent: number
       me: string
+      menuOpen: boolean
     }
   }
 }

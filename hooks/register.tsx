@@ -22,6 +22,7 @@ const isOpen = atom({ plugin: 'claude-team-chat', key: 'isOpen' } as const, fals
 const problem = atom({ plugin: 'claude-team-chat', key: 'problem' } as const, '')
 const sent = atom({ plugin: 'claude-team-chat', key: 'sent' } as const, 0)
 const nickname = atom({ plugin: 'claude-team-chat', key: 'me' } as const, '')
+const menuOpen = atom({ plugin: 'claude-team-chat', key: 'menuOpen' } as const, false)
 
 const HELP = [
   '/chat                 open the chat pane',
@@ -35,8 +36,13 @@ const HELP = [
   '/chat who             list who is online',
   '/chat read            show the last messages here',
   '/chat leave           leave the room',
+  '/chat stop            stop the relay and public link this computer is hosting',
   '/chat name <name>     change your name in the chat (/chat name alone shows it)',
 ].join('\n')
+
+// The hint after /chat in the prompt box: only what works where you are.
+const HINT_NO_ROOM = 'new  ·  join <code> [link]  ·  name <you>  ·  relay  ·  stop  ·  help'
+const HINT_IN_ROOM = '<message>  ·  who  ·  read  ·  invite  ·  name <you>  ·  leave  ·  help'
 
 const NO_ROOM = 'Not in a room yet: /chat new makes one, /chat join <code> joins one.'
 const INSTALL = '/plugin install claude-team-chat --marketplace lovieco/claude-team-chat'
@@ -63,7 +69,7 @@ class RelayError extends Error {
 let polls: Promise<void> = Promise.resolve()
 let pending = 0
 let retryAt = 0
-let lastStatus: string | undefined
+let isHosting = false
 
 export const register: Register = (on, options) => {
   config.defaultServer = String(options.server ?? '').trim().replace(/\/+$/, '')
@@ -92,10 +98,12 @@ export const register: Register = (on, options) => {
       await update($, messages, () => [])
     }
 
+    $.ui.status(undefined) // the clickable bar above the prompt shows the room now
+
     await $.command.register({
       name: 'chat',
-      description: 'Chat with other Claude Code users: make a room code, join one, send, see who is online',
-      argumentHint: '[message | new | join <code> | who | read | leave | help]',
+      description: 'Chat with other Claude Code users: make a room or join one by its code',
+      argumentHint: HINT_NO_ROOM,
     })
     await $.tool.register({
       name: 'chat_send',
@@ -128,6 +136,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('command.describe', { command: 'chat' }, async ($, e, next) => {
+    const where = await read($, room)
+    if (!where) return next({ ...e, argumentHint: HINT_NO_ROOM })
+    const people = await read($, online)
+    return next({
+      ...e,
+      description: `Room ${where} as ${config.me}  ·  ${people.length} online`,
+      argumentHint: HINT_IN_ROOM,
+    })
+  }).catch(($, e, next) => next(e))
+
   on('session.end', async ($, e, next) => {
     await leave($, await read($, room))
     return next(e)
@@ -145,8 +164,12 @@ export const register: Register = (on, options) => {
           return { text: where ? `Chat pane open on room ${where}, as ${config.me}.` : `Chat pane open. ${NO_ROOM}` }
         }
         case 'new': {
-          const code = await newRoom($)
+          const code = await startSession($)
           return { text: `New room: ${code}\n\nSend this to a friend:\n\n${inviteText(code)}` }
+        }
+        case 'stop': {
+          await hostHere($, 'stop')
+          return { text: 'Stopped the relay and public link this computer was hosting. Rooms on it are gone.' }
         }
         case 'invite': {
           const where = await read($, room)
@@ -188,7 +211,7 @@ export const register: Register = (on, options) => {
           return { text: `Sent to room ${await sendMessage($, args)}.` }
       }
     } catch (error) {
-      return { text: `claude-team-chat: ${reasonOf(error)}` }
+      return { text: reasonOf(error) }
     }
   })
 
@@ -220,6 +243,21 @@ export const register: Register = (on, options) => {
     await poll($)
     return { result: await whoText($) }
   }).catch(failedTool)
+
+  // The bar above the prompt: the room at a glance, and a menu when clicked.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const isMenu = await read($, menuOpen)
+    return (
+      <Box flexDirection="column">
+        <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
+          {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
+        </Button>
+        {isMenu ? await menuItems($, e) : null}
+      </Box>
+    )
+  })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -282,6 +320,53 @@ export const register: Register = (on, options) => {
   })
 }
 
+async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
+  const { Box, Button } = $.ui.resolve(e)
+  const [where, trouble] = await Promise.all([read($, room), read($, problem)])
+  const start = (
+    <Button
+      key="chat-start"
+      label="Start a new session"
+      variant="primary"
+      onPress={press => void fromMenu($, () => startChat($, press.surface))}
+    />
+  )
+  const buttons = where ? (
+    <Box>
+      {start}
+      <Button key="chat-open" label="Open chat" onPress={() => void fromMenu($, () => openPane($))} />
+      <Button key="chat-invite" label="Copy invite" onPress={press => void fromMenu($, () => copyInvite($, where, press.surface))} />
+      <Button key="chat-who" label="Who's here" onPress={() => void fromMenu($, () => whoFromMenu($))} />
+      <Button key="chat-leave" label="Leave room" onPress={() => void fromMenu($, () => leaveFromMenu($))} />
+    </Box>
+  ) : (
+    <Box>{start}</Box>
+  )
+  if (e.surface === 'mobile') return buttons
+  const { Input } = $.ui.resolve(e)
+  return (
+    <Box flexDirection="column">
+      {buttons}
+      {!where && (
+        <Input
+          key="chat-join"
+          placeholder="Join a friend's room: code [relay link]"
+          submitLabel="join"
+          onSubmit={value => void fromMenu($, () => joinFromMenu($, value))}
+        />
+      )}
+      {trouble && (
+        <Input
+          key="chat-relay"
+          placeholder="Relay link not answering? Paste the new one: https://….trycloudflare.com"
+          submitLabel="use"
+          onSubmit={value => void fromMenu($, () => relayFromMenu($, value))}
+        />
+      )}
+    </Box>
+  )
+}
+
 async function composer($: $, e: RenderInput, where: string) {
   if (e.surface === 'mobile') return null
   const { Input } = $.ui.resolve(e)
@@ -305,7 +390,7 @@ async function submitFromPane($: $, value: string, count: number) {
     await update($, sent, n => n + 1)
     await $.ui.focus({ requestId: PANE, key: `compose-${count + 1}` }).catch(() => {})
   } catch (error) {
-    $.ui.toast(`claude-team-chat: ${reasonOf(error)}`)
+    $.ui.toast(reasonOf(error))
   }
 }
 
@@ -352,7 +437,8 @@ async function reachRelay($: $, server: string) {
   try {
     await relay($, 'GET', '/health', undefined, server)
   } catch (error) {
-    throw new Error(`Can't reach the relay at ${server}: ${clip(reasonOf(error), 80)}`)
+    if (error instanceof RelayError) throw new Error(`${hostOf(server)} doesn't answer like a chat relay (${error.status}).`)
+    throw error
   }
 }
 
@@ -386,11 +472,19 @@ async function relay($: $, method: 'GET' | 'POST', path: string, body?: unknown,
   const headers: Record<string, string> = { accept: 'application/json' }
   if (config.token) headers.authorization = `Bearer ${config.token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
-  const response = await $.http.fetch(`${server}${path}`, {
-    method,
-    headers,
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
+  let response
+  try {
+    response = await $.http.fetch(`${server}${path}`, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  } catch (error) {
+    throw new Error(
+      `Can't reach the relay at ${hostOf(server)}: ${networkReason(error)}. ` +
+        'Got a new link? Paste it in the chat menu, or /chat relay <link>.',
+    )
+  }
   let data: Record<string, unknown> = {}
   try {
     data = JSON.parse(response.text || '{}')
@@ -465,39 +559,105 @@ async function pollGuarded($: $) {
     if (error instanceof RelayError && error.status === 404 && where) {
       // The relay restarted or the room sat empty past its time: the code is gone.
       await leaveRoom($)
-      $.ui.toast(`claude-team-chat: room ${where} no longer exists. /chat new makes another.`)
+      $.ui.toast(`Room ${where} no longer exists. /chat new makes another.`)
     } else {
       const reason = reasonOf(error) || 'unreachable'
-      if (!(await read($, problem))) {
-        $.ui.toast(
-          error instanceof RelayError
-            ? `claude-team-chat: ${clip(reason, 100)}`
-            : `claude-team-chat: can't reach ${config.server} (${clip(reason, 80)})`,
-        )
-      }
+      if (!(await read($, problem))) $.ui.toast(clip(reason, 200))
       await update($, problem, () => reason)
+      await update($, online, () => [])
       retryAt = Date.now() + RETRY_MS
     }
   }
-  await showStatus($)
 }
 
-async function showStatus($: $) {
+// What the bar above the prompt says about the room.
+async function barText($: $) {
   const [where, count, people, trouble] = await Promise.all([
     read($, room),
     read($, unread),
     read($, online),
     read($, problem),
   ])
-  const text = !where
-    ? 'chat: no room'
-    : trouble
-      ? `chat ${where}: offline`
-      : `chat ${where} · ${people.length} online${count > 0 ? ` · ${count} new` : ''}`
-  if (text !== lastStatus) {
-    lastStatus = text
-    $.ui.status(text)
+  if (!where) return 'chat: no room'
+  if (trouble) return `chat ${where}: can't reach the relay`
+  return `chat ${where} · ${people.length} online${count > 0 ? ` · ${count} new` : ''}`
+}
+
+// A menu item: closes the menu, runs, and says what went wrong in a toast.
+async function fromMenu($: $, act: () => Promise<unknown>) {
+  await update($, menuOpen, () => false)
+  try {
+    await act()
+  } catch (error) {
+    $.ui.toast(reasonOf(error))
   }
+}
+
+// Start a new session: a relay that answers (this computer's, started if need be),
+// a new room on it, its invite on the clipboard, and the chat pane open.
+async function startChat($: $, surface: RenderSurface) {
+  const code = await startSession($)
+  await copyInvite($, code, surface)
+  await openPane($)
+}
+
+async function startSession($: $) {
+  if (!(await relayAnswers($, config.server))) {
+    if (isHosting) throw new Error('Already starting a relay here; one moment.')
+    isHosting = true
+    try {
+      $.ui.toast('Starting a chat relay and public link on this computer…')
+      await useRelay($, await hostHere($, 'start'))
+    } finally {
+      isHosting = false
+    }
+  }
+  return newRoom($)
+}
+
+async function relayAnswers($: $, server: string) {
+  try {
+    await relay($, 'GET', '/health', undefined, server)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// server/host.sh: starts (or reuses) this computer's relay and its public link and
+// prints the link, or stops both. They run on their own, past Claude Code.
+async function hostHere($: $, what: 'start' | 'stop') {
+  const ran = await $.process.run(
+    ['/bin/sh', `${$.plugin.root}/server/host.sh`, ...(what === 'stop' ? ['stop'] : [])],
+    { timeoutMs: 120_000 },
+  )
+  if (ran.exitCode !== 0) {
+    throw new Error(ran.stderr.trim().split('\n').pop() || `Couldn't ${what} the relay here (exit ${ran.exitCode}).`)
+  }
+  const link = ran.stdout.trim().split('\n').pop() ?? ''
+  if (what === 'start' && !isRelayLink(link)) throw new Error('Hosting gave no relay link.')
+  return link
+}
+
+async function whoFromMenu($: $) {
+  await poll($)
+  $.ui.toast(await whoText($))
+}
+
+async function relayFromMenu($: $, value: string) {
+  await changeRelay($, relayLink(value))
+  $.ui.toast(`Using the relay at ${config.server}.`)
+}
+
+async function joinFromMenu($: $, value: string) {
+  const code = await join($, value)
+  $.ui.toast(`Joined room ${code} as ${config.me}.`)
+}
+
+async function leaveFromMenu($: $) {
+  const where = await read($, room)
+  await leaveRoom($)
+  $.ui.toast(`Left room ${where}.`)
 }
 
 async function sendMessage($: $, text: string, via?: 'claude') {
@@ -600,7 +760,6 @@ async function openPane($: $) {
 
 async function markRead($: $) {
   await update($, unread, () => 0)
-  await showStatus($)
 }
 
 async function transcript($: $, limit: number) {
@@ -614,6 +773,7 @@ async function transcript($: $, limit: number) {
 async function whoText($: $) {
   const where = await read($, room)
   if (!where) return NO_ROOM
+  if (await read($, problem)) return `Can't reach the relay, so who's in room ${where} is unknown right now.`
   const people = await read($, online)
   return people.length === 0 ? `Nobody is online in room ${where}.` : `Online in room ${where}: ${people.join(', ')}`
 }
@@ -627,6 +787,23 @@ function merge(list: readonly ChatMessage[], incoming: readonly ChatMessage[]) {
   const added = incoming.filter(m => !seen.has(m.id))
   if (added.length === 0) return [...list]
   return [...list, ...added].sort((a, b) => a.id - b.id).slice(-KEEP)
+}
+
+function hostOf(server: string) {
+  try {
+    return new URL(server).host
+  } catch {
+    return server
+  }
+}
+
+// The engine's fetch error, in words: "<plugin>: $.http.fetch(<url>) failed: ENOTFOUND: ...".
+function networkReason(error: unknown) {
+  const text = reasonOf(error)
+  if (/ENOTFOUND|EAI_AGAIN/.test(text)) return 'that link no longer exists'
+  if (/ECONNREFUSED/.test(text)) return 'nothing answers there'
+  if (/ETIMEDOUT|timed out|timeout/i.test(text)) return 'it took too long to answer'
+  return clip(text.replace(/^.*\$\.http\.fetch\([^)]*\) failed: /, ''), 80)
 }
 
 function reasonOf(error: unknown) {
