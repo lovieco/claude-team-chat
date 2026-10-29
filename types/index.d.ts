@@ -8,7 +8,7 @@ export type ChatMessage = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'claude-team-chat': {
+    'team-chat': {
       room: string
       epoch: string
       messages: ChatMessage[]

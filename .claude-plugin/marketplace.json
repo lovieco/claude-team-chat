@@ -1,6 +1,6 @@
 {
-  "name": "claude-team-chat",
+  "name": "team-chat",
   "owner": { "name": "Lovie" },
   "metadata": { "description": "Chat between Claude Code users, joined by 4-character room codes." },
-  "plugins": [{ "name": "claude-team-chat", "source": "./" }]
+  "plugins": [{ "name": "team-chat", "source": "./" }]
 }
