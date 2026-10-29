@@ -50,7 +50,7 @@ function fakeRelay(on: On) {
 function engine(on: On) {
   const toasts: string[] = []
   const opened: string[] = []
-  mock.clock(on, { now: 1_000 })
+  const clock = mock.clock(on, { now: 1_000 })
   mock.store(on)
   mock.env(on, { USER: 'fallback' })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -67,7 +67,7 @@ function engine(on: On) {
   on('ui.focus', () => ({}))
   on('ui.copy', () => ({ value: { isCopied: true as const } }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  return { toasts, opened }
+  return { toasts, opened, clock }
 }
 
 // server/host.sh beneath the plugin: prints the link, or fails the way it says.
@@ -103,6 +103,14 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 100, scroll: { offset: 0, bodyRows: 6 }, view: {} },
 }
 
+// The notice in the line above the chat bar ('' when there is none).
+async function noticeOf($: Engine) {
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const text = (await ui.find({ key: 'chat-notice' }))?.text ?? ''
+  await ui.unmount()
+  return text.replace(/\s*×$/, '')
+}
+
 // What the bar above the prompt says, without its menu arrow.
 async function bar($: Engine) {
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -130,7 +138,8 @@ describe('claude-team-chat', () => {
     const made = (await $.command.run(chat('new'))).text ?? ''
     expect(ran).toHaveLength(1)
     expect(ran[0]).toMatch(/^\/bin\/sh .*\/server\/host\.sh$/)
-    expect(seen.toasts).toContain('Starting your chat on this computer…')
+    expect(await noticeOf($)).toBe('Starting your chat on this computer…')
+    expect(seen.toasts).toEqual([])
     expect(made).toContain(`Its code: ${CODE}`)
     expect(made).toContain(`2. Join: /chat join ${CODE}`)
     expect(await bar($)).toBe(`chat ${CODE} · 2 online`)
@@ -247,24 +256,26 @@ describe('claude-team-chat', () => {
 
     // Start a new session: hosts here, joins, copies the invite, opens the pane
     await ui.press({ key: 'chat-start' })
-    expect(seen.toasts.at(-1)).toBe('Invite copied. Paste it to your friend.')
+    expect(await noticeOf($)).toBe('Invite copied. Paste it to your friend.')
+    expect((await ui.find({ key: 'chat-notice' }))?.text).toContain('Invite copied.')
     expect(seen.opened).toEqual(['claude-team-chat'])
     expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▾`)
 
     await ui.press({ key: 'chat-bar' })
-    const order = (await ui.findAll({ type: 'Button' })).map(b => b.key).filter(k => k !== 'chat-bar' && k !== 'chat-minimize')
+    const order = (await ui.findAll({ type: 'Button' })).map(b => b.key).filter(k => k !== 'chat-bar' && k !== 'chat-minimize' && k !== 'chat-notice-close')
     expect(order).toEqual(['chat-open', 'chat-invite', 'chat-who', 'chat-leave', 'chat-start'])
     await ui.press({ key: 'chat-who' })
-    expect(seen.toasts.at(-1)).toBe(`Online in room ${CODE}: ana, bo`)
+    expect(await noticeOf($)).toBe(`Online in room ${CODE}: ana, bo`)
 
     await ui.press({ key: 'chat-bar' })
     await ui.press({ key: 'chat-leave' })
-    expect(seen.toasts.at(-1)).toBe(`Left room ${CODE}.`)
+    expect(await noticeOf($)).toBe(`Left room ${CODE}.`)
     expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat: no room ▾')
 
     await ui.press({ key: 'chat-bar' })
     await ui.input({ key: 'chat-join', text: CODE })
-    expect(seen.toasts.at(-1)).toBe(`Joined room ${CODE} as ana.`)
+    expect(await noticeOf($)).toBe(`Joined room ${CODE} as ana.`)
+    expect(seen.toasts).toEqual([])
     await ui.unmount()
 
     const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
@@ -283,7 +294,7 @@ describe('claude-team-chat', () => {
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     await ui.press({ key: 'chat-bar' })
     await ui.input({ key: 'chat-relay', text: LINK })
-    expect(seen.toasts.at(-1)).toBe(`Using the relay at ${LINK}.`)
+    expect(await noticeOf($)).toBe(`Using the relay at ${LINK}.`)
     expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online ▾`)
     await ui.unmount()
   })
@@ -296,10 +307,32 @@ describe('claude-team-chat', () => {
     await $.command.run(chat('who'))
 
     const said = "Can't reach the relay at gone.test: that link no longer exists. Got a new link? Paste it in the chat menu, or /chat relay <link>."
-    expect(seen.toasts.filter(t => t === said)).toHaveLength(1)
-    expect(seen.toasts.some(t => t.includes('claude-team-chat'))).toBe(false)
+    expect(await noticeOf($)).toBe(said)
+    expect(seen.toasts).toEqual([])
     expect((await $.command.run(chat('who'))).text).toBe("Can't reach the relay, so who's in room Ab3x is unknown right now.")
     expect((await $.command.run(chat('new'))).text).toBe('Hosting needs cloudflared: brew install cloudflared')
+  })
+
+  test('notices show above the bar, close with ×, and clear after a few seconds', { options: OPTIONS }, async ($, on) => {
+    fakeRelay(on)
+    const seen = engine(on)
+    await $.session.start(START)
+    await $.command.run(chat(`join ${CODE}`))
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await ui.press({ key: 'chat-bar' })
+    await ui.press({ key: 'chat-who' })
+    expect((await ui.find({ key: 'chat-notice' }))?.text).toContain(`Online in room ${CODE}: ana, bo`)
+    await ui.press({ key: 'chat-notice-close' })
+    expect(await ui.find({ key: 'chat-notice' })).toBeUndefined()
+
+    await ui.press({ key: 'chat-bar' })
+    await ui.press({ key: 'chat-who' })
+    await seen.clock.advance(7_000)
+    expect(await noticeOf($)).toBe(`Online in room ${CODE}: ana, bo`)
+    await seen.clock.advance(1_500)
+    expect(await noticeOf($)).toBe('')
+    await ui.unmount()
   })
 
   test('/chat stop stops hosting', { options: OPTIONS }, async ($, on) => {
@@ -337,7 +370,7 @@ describe('claude-team-chat', () => {
 
     relay.drop('Ab3x')
     expect((await $.command.run(chat('who'))).text).toContain('Not in a chat yet')
-    expect(seen.toasts).toContain('Room Ab3x no longer exists. /chat new makes another.')
+    expect(await noticeOf($)).toBe('Room Ab3x no longer exists. /chat new makes another.')
     expect(await bar($)).toBe('chat: no room')
   })
 

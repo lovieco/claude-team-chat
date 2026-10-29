@@ -9,6 +9,7 @@ const PANE = 'claude-team-chat'
 const POLL_MS = 2000
 const RETRY_MS = 10_000
 const KEEP = 200
+const NOTICE_MS = 8000 // how long a notice above the bar stays
 const CODE = /^[A-Za-z0-9]{4}$/ // a room on a relay run by hand: /chat join Ab3x <link>
 const MAIN = 'main' // the room every relay has; a hosted chat is this room
 const TUNNEL = /^[a-z0-9]+(?:-[a-z0-9]+)+$/ // a hosted chat's code: its tunnel's name
@@ -27,6 +28,7 @@ const sent = atom({ plugin: 'claude-team-chat', key: 'sent' } as const, 0)
 const nickname = atom({ plugin: 'claude-team-chat', key: 'me' } as const, '')
 const menuOpen = atom({ plugin: 'claude-team-chat', key: 'menuOpen' } as const, false)
 const minimized = atom({ plugin: 'claude-team-chat', key: 'minimized' } as const, false)
+const notice = atom({ plugin: 'claude-team-chat', key: 'notice' } as const, '')
 
 const HELP = [
   '/chat                 open the chat pane',
@@ -253,18 +255,27 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const [isMenu, where, list, isPaneOpen, isSmall] = await Promise.all([
+    const [isMenu, where, list, isPaneOpen, isSmall, said] = await Promise.all([
       read($, menuOpen),
       read($, room),
       read($, messages),
       read($, isOpen),
       read($, minimized),
+      read($, notice),
     ])
     // One line: the latest message (while the pane, which shows them all, is closed),
     // then the room, then − to minimize to the room alone, + to bring the message back.
     const last = where && !isPaneOpen && !isSmall ? list.at(-1) : undefined
     return (
-      <Box flexDirection="column" rowGap={isMenu ? 'sm' : undefined}>
+      <Box flexDirection="column" rowGap={isMenu || said ? 'sm' : undefined}>
+        {said ? (
+          <Box key="chat-notice" flexDirection="row" alignItems="center" columnGap="sm">
+            <Box flexGrow={1} flexShrink={1}>
+              <Text wrap="wrap">{said}</Text>
+            </Box>
+            <Button key="chat-notice-close" plain label="×" onPress={() => void update($, notice, () => '')} />
+          </Box>
+        ) : null}
         <Box flexDirection="row" alignItems="center" columnGap={1}>
           <Box flexGrow={1} flexShrink={1}>
             {last ? (
@@ -439,7 +450,7 @@ async function submitFromPane($: $, value: string, count: number) {
     await update($, sent, n => n + 1)
     await $.ui.focus({ requestId: PANE, key: `compose-${count + 1}` }).catch(() => {})
   } catch (error) {
-    $.ui.toast(reasonOf(error))
+    await say($, reasonOf(error))
   }
 }
 
@@ -531,7 +542,7 @@ async function copyInvite($: $, where: string, surface: RenderSurface) {
     const ran = await $.process.run(['pbcopy'], { stdin: text, timeoutMs: 5000 }).catch(() => undefined)
     isCopied = ran?.exitCode === 0
   }
-  $.ui.toast(
+  await say($, 
     !isCopied
       ? "Couldn't copy here: /chat invite prints it to copy by hand."
       : isLocalRelay()
@@ -631,10 +642,10 @@ async function pollGuarded($: $) {
     if (error instanceof RelayError && error.status === 404 && where) {
       // The relay restarted or the room sat empty past its time: the code is gone.
       await leaveRoom($)
-      $.ui.toast(`Room ${codeOf(where)} no longer exists. /chat new makes another.`)
+      await say($, `Room ${codeOf(where)} no longer exists. /chat new makes another.`)
     } else {
       const reason = reasonOf(error) || 'unreachable'
-      if (!(await read($, problem))) $.ui.toast(clip(reason, 200))
+      if (!(await read($, problem))) await say($, clip(reason, 200))
       await update($, problem, () => reason)
       await update($, online, () => [])
       retryAt = Date.now() + RETRY_MS
@@ -661,7 +672,7 @@ async function fromMenu($: $, act: () => Promise<unknown>) {
   try {
     await act()
   } catch (error) {
-    $.ui.toast(reasonOf(error))
+    await say($, reasonOf(error))
   }
 }
 
@@ -679,7 +690,7 @@ async function startSession($: $) {
   if (isHosting) throw new Error('Already starting your chat; one moment.')
   isHosting = true
   try {
-    $.ui.toast('Starting your chat on this computer…')
+    await say($, 'Starting your chat on this computer…')
     const link = await hostHere($, 'start')
     await enter($, link, MAIN)
     return MAIN
@@ -705,7 +716,14 @@ async function hostHere($: $, what: 'start' | 'stop') {
 
 async function whoFromMenu($: $) {
   await poll($)
-  $.ui.toast(await whoText($))
+  await say($, await whoText($))
+}
+
+// Says something in the line above the chat bar, where the person is looking, for a few
+// seconds; a newer notice takes its place. New messages still pop up as toasts.
+async function say($: $, text: string) {
+  await update($, notice, () => text)
+  $.clock.after(NOTICE_MS, () => void update($, notice, now => (now === text ? '' : now)))
 }
 
 async function setMinimized($: $, value: boolean) {
@@ -715,18 +733,18 @@ async function setMinimized($: $, value: boolean) {
 
 async function relayFromMenu($: $, value: string) {
   await changeRelay($, relayLink(value))
-  $.ui.toast(`Using the relay at ${config.server}.`)
+  await say($, `Using the relay at ${config.server}.`)
 }
 
 async function joinFromMenu($: $, value: string) {
   const code = await join($, value)
-  $.ui.toast(`Joined room ${code} as ${config.me}.`)
+  await say($, `Joined room ${code} as ${config.me}.`)
 }
 
 async function leaveFromMenu($: $) {
   const where = await read($, room)
   await leaveRoom($)
-  $.ui.toast(`Left room ${codeOf(where)}.`)
+  await say($, `Left room ${codeOf(where)}.`)
 }
 
 async function sendMessage($: $, text: string, via?: 'claude') {

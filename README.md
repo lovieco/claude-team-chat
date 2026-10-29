@@ -97,6 +97,8 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 - **Open chat** · **Copy invite** · **Who's here** · **Leave room**, then **Start a new session** last while you're in a room
 - a **Join** box when you're not in a room, and a box for a new relay link if yours stops answering
 
+What the menu's buttons report (who's here, invite copied, errors) shows in a line just above the bar for a few seconds, where you're already looking. Only new messages pop up as notifications.
+
 ---
 
 <a id="how-it-works"></a>
