@@ -264,7 +264,7 @@ export const register: Register = (on, options) => {
     // then the room, then − to minimize to the room alone, + to bring the message back.
     const last = where && !isPaneOpen && !isSmall ? list.at(-1) : undefined
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" rowGap={isMenu ? 'sm' : undefined}>
         <Box flexDirection="row" alignItems="center" columnGap={1}>
           <Box flexGrow={1} flexShrink={1}>
             {last ? (
@@ -377,15 +377,15 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
     : [start]
   if (e.surface === 'mobile') {
     return (
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
         {actions}
       </Box>
     )
   }
   const { Input } = $.ui.resolve(e)
   return (
-    <Box flexDirection="column">
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+    <Box flexDirection="column" rowGap="xs">
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
         {actions}
         {!where && <Text dimColor>or</Text>}
         {!where && (
@@ -400,7 +400,7 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
         )}
       </Box>
       {trouble && (
-        <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+        <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
           <Text dimColor>Relay link not answering?</Text>
           <Box width={46}>
             <Input
