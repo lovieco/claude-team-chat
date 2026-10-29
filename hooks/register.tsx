@@ -401,7 +401,7 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   )
   if (e.surface === 'mobile') {
     return (
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap="sm">
         {actions}
       </Box>
     )
@@ -414,8 +414,8 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   return (
     <Box flexDirection="column" rowGap="xs">
       {where && (
-        <Box flexDirection="row" alignItems="center">
-          <Box flexGrow={1}>
+        <Box flexDirection="column" width="100%">
+          <Box flexDirection="column" width="100%">
             <Input
               key={`chat-reply-${count}`}
               placeholder={lastFromOthers ? `Reply to ${lastFromOthers.from}…` : `Message room ${codeOf(where)}…`}
@@ -426,11 +426,11 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
           </Box>
         </Box>
       )}
-      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap="sm">
         {actions}
         {!where && <Text dimColor>or</Text>}
         {!where && (
-          <Box width={34}>
+          <Box flexDirection="column" width={44}>
             <Input
               key="chat-join"
               placeholder="Join with a code, like quiet-river-tall-moon"
@@ -443,7 +443,7 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
       {trouble && (
         <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
           <Text dimColor>Relay link not answering?</Text>
-          <Box width={46}>
+          <Box flexDirection="column" width={56}>
             <Input
               key="chat-relay"
               placeholder="Paste the new https://….trycloudflare.com link"
