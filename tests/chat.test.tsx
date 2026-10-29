@@ -215,7 +215,7 @@ describe('claude-team-chat', () => {
     expect(inside.description).toBe(`Room ${CODE} as ana  ·  2 online`)
   })
 
-  test('the bar is one line: the latest message, the room, and − to minimize', { options: OPTIONS }, async ($, on) => {
+  test('the bar is one line: the latest message, the room, and − folds it all away', { options: OPTIONS }, async ($, on) => {
     const relay = fakeRelay(on)
     engine(on)
     await $.session.start(START)
@@ -228,12 +228,20 @@ describe('claude-team-chat', () => {
     expect(await ui.find({ text: /bo: two/ })).toBeUndefined()
     expect((await ui.find({ key: 'chat-minimize' }))?.text).toBe('−')
 
+    // − with the menu open folds everything: message, menu and reply box
+    await ui.press({ key: 'chat-bar' })
+    expect(await ui.find({ type: 'Input' })).toBeDefined()
     await ui.press({ key: 'chat-minimize' })
     expect(await ui.find({ key: 'chat-last' })).toBeUndefined()
+    expect(await ui.find({ type: 'Input' })).toBeUndefined()
+    expect(await ui.find({ key: 'chat-open' })).toBeUndefined()
+    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online · 3 new`)
     expect((await ui.find({ key: 'chat-minimize' }))?.text).toBe('+')
-    expect((await ui.find({ key: 'chat-bar' }))?.text).toBe(`chat ${CODE} · 2 online · 3 new ▾`)
+
+    // + (or the status) unfolds it, menu closed
     await ui.press({ key: 'chat-minimize' })
     expect((await ui.find({ key: 'chat-last' }))?.text).toMatch(/bo: three$/)
+    expect(await ui.find({ key: 'chat-open' })).toBeUndefined()
     await ui.unmount()
 
     await $.command.run(chat(''))

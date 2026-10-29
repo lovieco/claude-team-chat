@@ -84,7 +84,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | --- | --- |
 | 🔔 **Popups** | New messages pop up wherever you are in Claude Code |
 | 🪟 **Chat pane** | `/chat` opens the room: messages, who's online, a box to type in, a Copy invite button |
-| 🎛️ **Chat bar** | One line above the prompt: the latest message, then `chat quiet-river-tall-moon · 2 online · 1 new ▾`. Click it for a menu; **−** shrinks it to the room alone |
+| 🎛️ **Chat bar** | One line above the prompt: the latest message, then `chat quiet-river-tall-moon · 2 online · 1 new ▾`. Click it for a menu; **−** folds the whole bar to the room's status, **+** unfolds it |
 | 🤖 **Claude chats for you** | *"tell the room the deploy is out"*, *"what did Jake say?"* |
 | 🔑 **One code to join** | Four words like `quiet-river-tall-moon`: the name of the host's public link |
 | 🏷️ **Your name** | `/chat name Emily`, kept for next time, unique in the room |

@@ -263,9 +263,20 @@ export const register: Register = (on, options) => {
       read($, minimized),
       read($, notice),
     ])
+    // Minimized, the whole bar folds to the room's status on the right, with + to unfold.
+    if (where && isSmall) {
+      return (
+        <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1}>
+          <Button key="chat-bar" plain onPress={() => void setMinimized($, false)}>
+            {await barText($)}
+          </Button>
+          <Button key="chat-minimize" plain label="+" onPress={() => void setMinimized($, false)} />
+        </Box>
+      )
+    }
     // One line: the latest message (while the pane, which shows them all, is closed),
-    // then the room, then − to minimize to the room alone, + to bring the message back.
-    const last = where && !isPaneOpen && !isSmall ? list.at(-1) : undefined
+    // then the room, then − to fold it all away.
+    const last = where && !isPaneOpen ? list.at(-1) : undefined
     return (
       <Box flexDirection="column" rowGap={isMenu || said ? 'sm' : undefined}>
         {said ? (
@@ -294,14 +305,7 @@ export const register: Register = (on, options) => {
           <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
             {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
           </Button>
-          {where ? (
-            <Button
-              key="chat-minimize"
-              plain
-              label={isSmall ? '+' : '−'}
-              onPress={() => void setMinimized($, !isSmall)}
-            />
-          ) : null}
+          {where ? <Button key="chat-minimize" plain label="−" onPress={() => void setMinimized($, true)} /> : null}
         </Box>
         {isMenu ? await menuItems($, e) : null}
       </Box>
@@ -767,6 +771,7 @@ async function say($: $, text: string) {
 }
 
 async function setMinimized($: $, value: boolean) {
+  if (value) await update($, menuOpen, () => false)
   await update($, minimized, () => value)
   await $.store.set('minimized', value)
 }
