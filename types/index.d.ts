@@ -19,6 +19,7 @@ declare module 'claude-code' {
       sent: number
       me: string
       menuOpen: boolean
+      minimized: boolean
     }
   }
 }

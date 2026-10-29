@@ -34,21 +34,37 @@ stop_pid() {
 if [ "${1:-}" = stop ]; then
   stop_pid tunnel
   stop_pid relay
-  rm -f "$DIR/link"
+  rm -f "$DIR/link" "$DIR/port"
   echo stopped
   exit 0
 fi
 
-# 1. A relay on this computer: reuse one that answers, else start it.
-if ! answers "$LOCAL" 2; then
-  command -v node >/dev/null || { echo "Hosting needs Node.js (nodejs.org)." >&2; exit 3; }
-  detach "$DIR/relay.log" env HOST=127.0.0.1 PORT="$PORT" TRUST_PROXY=1 node "$HERE/relay.mjs" >"$DIR/relay.pid"
-  i=0
-  until answers "$LOCAL" 1; do
-    i=$((i + 1))
-    [ "$i" -gt 40 ] && { echo "The relay didn't start; see $DIR/relay.log" >&2; exit 3; }
-    sleep 0.25
-  done
+# 1. A relay on this computer: reuse one that answers, else start one. A relay from
+#    before hosted chats (no "main" room) is left alone and the next port is tried.
+is_current() { curl -fsS --max-time 2 "$1/health" 2>/dev/null | grep -q '"main":true'; }
+[ -f "$DIR/port" ] && PORT="$(cat "$DIR/port")"
+tries=0
+while :; do
+  LOCAL="http://127.0.0.1:$PORT"
+  is_current "$LOCAL" && break
+  if ! curl -s -o /dev/null --max-time 2 "$LOCAL/health"; then # nothing listens there
+    command -v node >/dev/null || { echo "Hosting needs Node.js (nodejs.org)." >&2; exit 3; }
+    detach "$DIR/relay.log" env HOST=127.0.0.1 PORT="$PORT" TRUST_PROXY=1 node "$HERE/relay.mjs" >"$DIR/relay.pid"
+    i=0
+    until is_current "$LOCAL"; do
+      i=$((i + 1))
+      [ "$i" -gt 40 ] && { echo "The relay didn't start; see $DIR/relay.log" >&2; exit 3; }
+      sleep 0.25
+    done
+    break
+  fi
+  tries=$((tries + 1))
+  [ "$tries" -ge 10 ] && { echo "Ports $((PORT - 9))-$PORT are all taken by something else." >&2; exit 6; }
+  PORT=$((PORT + 1))
+done
+if [ "$(cat "$DIR/port" 2>/dev/null)" != "$PORT" ]; then
+  echo "$PORT" >"$DIR/port"
+  rm -f "$DIR/link" # a link to another port's relay is no use
 fi
 
 # 2. A public link to it: reuse the last one while it answers, else open a new one.

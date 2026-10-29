@@ -4,8 +4,11 @@
 //
 //   PORT=47800 CHAT_TOKEN=some-secret node relay.mjs
 //
-// GET  /health                          -> { ok, epoch }
+// GET  /health                          -> { ok, epoch, main: true }
 // POST /rooms                           -> { code }      makes a room (needs the token when CHAT_TOKEN is set)
+//
+// Every relay also has one room of its own, "main", always there: a chat hosted
+// behind a tunnel is that room, and the tunnel's name is the code people join by.
 // GET  /rooms/:code?after=<id>&name=<n> -> { epoch, messages, online }   (also marks <n> online)
 // POST /rooms/:code/messages            -> { message }   body { from, text, via? }
 // POST /rooms/:code/leave               -> { ok }        body { name }
@@ -27,6 +30,7 @@ const EPOCH = randomUUID()
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const CODE = /^[A-Za-z0-9]{4}$/
+const MAIN = 'main' // the relay's own room, never expires
 const KEEP = 500 // messages kept per room
 const BACKLOG = 50 // messages a new reader gets
 const ONLINE_MS = 15_000 // seen within this long counts as online
@@ -40,7 +44,7 @@ const MAX_TEXT = 4_000
 const NAME = /^[^\u0000-\u001f]{1,40}$/
 
 /** @type {Map<string, { seq: number, messages: object[], seen: Map<string, number>, lastActive: number }>} */
-const rooms = new Map()
+const rooms = new Map([[MAIN, { seq: 0, messages: [], seen: new Map(), lastActive: Date.now() }]])
 /** @type {Map<string, { misses: number[], creates: number[] }>} */
 const clients = new Map()
 
@@ -106,7 +110,7 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://relay')
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
 
-    if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, epoch: EPOCH })
+    if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, epoch: EPOCH, main: true })
     if (parts[0] !== 'rooms') return send(res, 404, { error: 'not found' })
     const client = clientOf(req)
 
@@ -122,7 +126,7 @@ const server = createServer(async (req, res) => {
 
     if (client.misses.length >= MAX_MISSES) return send(res, 429, { error: 'too many wrong codes; wait a few minutes' })
     const code = parts[1] ?? ''
-    const room = CODE.test(code) ? rooms.get(code) : undefined
+    const room = code === MAIN || CODE.test(code) ? rooms.get(code) : undefined
     if (!room) {
       client.misses.push(Date.now())
       return send(res, 404, { error: `no room has the code ${CODE.test(code) ? code : '(not 4 letters or digits)'}` })
@@ -164,7 +168,7 @@ const server = createServer(async (req, res) => {
 // Drop idle rooms and forget addresses with nothing left in their window.
 setInterval(() => {
   const now = Date.now()
-  for (const [code, room] of rooms) if (now - room.lastActive > IDLE_MS) rooms.delete(code)
+  for (const [code, room] of rooms) if (code !== MAIN && now - room.lastActive > IDLE_MS) rooms.delete(code)
   for (const [address, client] of clients) {
     if (!client.misses.some(at => now - at < WINDOW_MS) && !client.creates.some(at => now - at < WINDOW_MS)) {
       clients.delete(address)

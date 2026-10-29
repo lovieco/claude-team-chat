@@ -9,8 +9,10 @@ const PANE = 'claude-team-chat'
 const POLL_MS = 2000
 const RETRY_MS = 10_000
 const KEEP = 200
-const RECENT = 3 // messages shown above the chat bar
-const CODE = /^[A-Za-z0-9]{4}$/
+const CODE = /^[A-Za-z0-9]{4}$/ // a room on a relay run by hand: /chat join Ab3x <link>
+const MAIN = 'main' // the room every relay has; a hosted chat is this room
+const TUNNEL = /^[a-z0-9]+(?:-[a-z0-9]+)+$/ // a hosted chat's code: its tunnel's name
+const TUNNEL_HOST = '.trycloudflare.com'
 const NAME = /^[^\u0000-\u001f\u007f]{1,40}$/
 const NAME_COLORS = ['suggestion', 'success', 'warning', 'claude', 'permission', 'planMode', 'autoAccept', 'ide'] as const
 
@@ -24,12 +26,12 @@ const problem = atom({ plugin: 'claude-team-chat', key: 'problem' } as const, ''
 const sent = atom({ plugin: 'claude-team-chat', key: 'sent' } as const, 0)
 const nickname = atom({ plugin: 'claude-team-chat', key: 'me' } as const, '')
 const menuOpen = atom({ plugin: 'claude-team-chat', key: 'menuOpen' } as const, false)
+const minimized = atom({ plugin: 'claude-team-chat', key: 'minimized' } as const, false)
 
 const HELP = [
   '/chat                 open the chat pane',
-  '/chat new             make a room and get its 4-character code to share',
-  '/chat join <code>     join a room by its code (capitals matter: Ab3x is not ab3x)',
-  '/chat join <code> <link>  join a room on the relay at that link (what an invite says)',
+  '/chat new             start your own chat and get its code to share',
+  '/chat join <code>     join a chat by its code, like quiet-river-tall-moon',
   '/chat relay [<link>|reset]  show or change the relay this chat uses',
   '/chat invite          the invite to send a friend: how to install and the join command',
   '/chat <message>       send a message to the room',
@@ -42,10 +44,10 @@ const HELP = [
 ].join('\n')
 
 // The hint after /chat in the prompt box: only what works where you are.
-const HINT_NO_ROOM = 'new  ·  join <code> [link]  ·  name <you>  ·  relay  ·  stop  ·  help'
+const HINT_NO_ROOM = 'new  ·  join <code>  ·  name <you>  ·  relay  ·  stop  ·  help'
 const HINT_IN_ROOM = '<message>  ·  who  ·  read  ·  invite  ·  name <you>  ·  leave  ·  help'
 
-const NO_ROOM = 'Not in a room yet: /chat new makes one, /chat join <code> joins one.'
+const NO_ROOM = 'Not in a chat yet: /chat new starts one, /chat join <code> joins one.'
 const INSTALL = '/plugin install claude-team-chat --marketplace lovieco/claude-team-chat'
 const LOCAL_ONLY =
   "The relay runs on this computer only, so friends on other computers can't reach it. Once it has a public link: /chat relay <link>."
@@ -92,7 +94,8 @@ export const register: Register = (on, options) => {
 
     const saved = await $.store.get('room')
     const configured = String(options.room ?? '').trim()
-    const start = typeof saved === 'string' && CODE.test(saved) ? saved : CODE.test(configured) ? configured : ''
+    const isRoom = (value: string) => value === MAIN || CODE.test(value)
+    const start = typeof saved === 'string' && isRoom(saved) ? saved : isRoom(configured) ? configured : ''
     if ((await read($, room)) !== start) {
       await update($, room, () => start)
       await update($, epoch, () => '')
@@ -100,6 +103,7 @@ export const register: Register = (on, options) => {
     }
 
     $.ui.status(undefined) // the clickable bar above the prompt shows the room now
+    if ((await $.store.get('minimized')) === true) await update($, minimized, () => true)
 
     await $.command.register({
       name: 'chat',
@@ -143,7 +147,7 @@ export const register: Register = (on, options) => {
     const people = await read($, online)
     return next({
       ...e,
-      description: `Room ${where} as ${config.me}  ·  ${people.length} online`,
+      description: `Room ${codeOf(where)} as ${config.me}  ·  ${people.length} online`,
       argumentHint: HINT_IN_ROOM,
     })
   }).catch(($, e, next) => next(e))
@@ -162,11 +166,11 @@ export const register: Register = (on, options) => {
         case '': {
           await openPane($)
           const where = await read($, room)
-          return { text: where ? `Chat pane open on room ${where}, as ${config.me}.` : `Chat pane open. ${NO_ROOM}` }
+          return { text: where ? `Chat pane open on room ${codeOf(where)}, as ${config.me}.` : `Chat pane open. ${NO_ROOM}` }
         }
         case 'new': {
-          const code = await startSession($)
-          return { text: `New room: ${code}\n\nSend this to a friend:\n\n${inviteText(code)}` }
+          const where = await startSession($)
+          return { text: `Your chat is up. Its code: ${codeOf(where)}\n\nSend this to a friend:\n\n${inviteText(where)}` }
         }
         case 'stop': {
           await hostHere($, 'stop')
@@ -182,13 +186,13 @@ export const register: Register = (on, options) => {
           if (tail) await changeRelay($, tail.toLowerCase() === 'reset' ? config.defaultServer : relayLink(tail))
           const where = await read($, room)
           const local = isLocalRelay() ? ` ${LOCAL_ONLY}` : ''
-          return { text: `Relay: ${config.server}${where ? `, room ${where}` : ''}.${local}` }
+          return { text: `Relay: ${config.server}${where ? `, room ${codeOf(where)}` : ''}.${local}` }
         }
         case 'leave': {
           const where = await read($, room)
           if (!where) return { text: NO_ROOM }
           await leaveRoom($)
-          return { text: `Left room ${where}.` }
+          return { text: `Left room ${codeOf(where)}.` }
         }
         case 'name':
         case 'nick':
@@ -224,7 +228,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'mcp__claude-team-chat__chat_send' }, async ($, e) => {
     try {
       const where = await sendMessage($, typeof e.text === 'string' ? e.text : '', 'claude')
-      return { result: `Sent to room ${where} as ${config.me} (shown as written by Claude).` }
+      return { result: `Sent to room ${codeOf(where)} as ${config.me} (shown as written by Claude).` }
     } catch (error) {
       return { deny: `claude-team-chat: ${reasonOf(error)}` }
     }
@@ -249,31 +253,45 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const [isMenu, where, list, isPaneOpen] = await Promise.all([
+    const [isMenu, where, list, isPaneOpen, isSmall] = await Promise.all([
       read($, menuOpen),
       read($, room),
       read($, messages),
       read($, isOpen),
+      read($, minimized),
     ])
-    // The latest messages above the bar, one line each, while the pane (which shows
-    // them all) is closed; as many as the band has rows for, up to three.
-    const fit = Math.min(RECENT, (e.props.maxRows || RECENT + 3) - 1 - (isMenu ? 2 : 0))
-    const recent = where && !isPaneOpen ? list.slice(-Math.max(0, fit)) : []
+    // One line: the latest message (while the pane, which shows them all, is closed),
+    // then the room, then − to minimize to the room alone, + to bring the message back.
+    const last = where && !isPaneOpen && !isSmall ? list.at(-1) : undefined
     return (
       <Box flexDirection="column">
-        {recent.map(m => (
-          <Text key={`recent-${m.id}`} wrap="truncate-end">
-            <Text dimColor>{clock(m.at)} </Text>
-            <Text bold color={colorFor(m.from)}>
-              {m.from}
-            </Text>
-            {m.via === 'claude' ? <Text dimColor> via Claude</Text> : null}
-            <Text>: {m.text}</Text>
-          </Text>
-        ))}
-        <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
-          {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
-        </Button>
+        <Box flexDirection="row" alignItems="center" columnGap={1}>
+          <Box flexGrow={1} flexShrink={1}>
+            {last ? (
+              <Box key="chat-last">
+                <Text wrap="truncate-end">
+                  <Text dimColor>{clock(last.at)} </Text>
+                  <Text bold color={colorFor(last.from)}>
+                    {last.from}
+                  </Text>
+                  {last.via === 'claude' ? <Text dimColor> via Claude</Text> : null}
+                  <Text>: {last.text}</Text>
+                </Text>
+              </Box>
+            ) : null}
+          </Box>
+          <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
+            {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
+          </Button>
+          {where ? (
+            <Button
+              key="chat-minimize"
+              plain
+              label={isSmall ? '+' : '−'}
+              onPress={() => void setMinimized($, !isSmall)}
+            />
+          ) : null}
+        </Box>
         {isMenu ? await menuItems($, e) : null}
       </Box>
     )
@@ -304,7 +322,7 @@ export const register: Register = (on, options) => {
         <Box key="header">
           <Text>Room </Text>
           <Text bold mono>
-            {where}
+            {codeOf(where)}
           </Text>
           <Text dimColor wrap="truncate-end">
             {'  '}
@@ -313,7 +331,7 @@ export const register: Register = (on, options) => {
         </Box>
         <Box key="invite">
           <Text dimColor>Invite: </Text>
-          <Text mono>/chat join {where} </Text>
+          <Text mono>{joinLine(where)} </Text>
           <Button key="copy-invite" label="Copy invite" onPress={press => void copyInvite($, where, press.surface)} />
         </Box>
         {isLocalRelay() && (
@@ -341,48 +359,58 @@ export const register: Register = (on, options) => {
 }
 
 async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
-  const { Box, Button } = $.ui.resolve(e)
+  const { Box, Button, Text } = $.ui.resolve(e)
   const [where, trouble] = await Promise.all([read($, room), read($, problem)])
-  // In a room, starting another one is the rare choice: last, and not the main action.
+  // One light row of actions, spaced evenly and wrapping on a narrow window. In a
+  // room, starting another is the rare choice, so it comes last.
   const start = (
-    <Button
-      key="chat-start"
-      label="Start a new session"
-      variant={where ? 'secondary' : 'primary'}
-      onPress={press => void fromMenu($, () => startChat($, press.surface))}
-    />
+    <Button key="chat-start" label="Start a new session" onPress={press => void fromMenu($, () => startChat($, press.surface))} />
   )
-  const buttons = where ? (
-    <Box>
-      <Button key="chat-open" label="Open chat" variant="primary" onPress={() => void fromMenu($, () => openPane($))} />
-      <Button key="chat-invite" label="Copy invite" onPress={press => void fromMenu($, () => copyInvite($, where, press.surface))} />
-      <Button key="chat-who" label="Who's here" onPress={() => void fromMenu($, () => whoFromMenu($))} />
-      <Button key="chat-leave" label="Leave room" onPress={() => void fromMenu($, () => leaveFromMenu($))} />
-      {start}
-    </Box>
-  ) : (
-    <Box>{start}</Box>
-  )
-  if (e.surface === 'mobile') return buttons
+  const actions = where
+    ? [
+        <Button key="chat-open" label="Open chat" onPress={() => void fromMenu($, () => openPane($))} />,
+        <Button key="chat-invite" label="Copy invite" onPress={press => void fromMenu($, () => copyInvite($, where, press.surface))} />,
+        <Button key="chat-who" label="Who's here" onPress={() => void fromMenu($, () => whoFromMenu($))} />,
+        <Button key="chat-leave" label="Leave room" onPress={() => void fromMenu($, () => leaveFromMenu($))} />,
+        start,
+      ]
+    : [start]
+  if (e.surface === 'mobile') {
+    return (
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+        {actions}
+      </Box>
+    )
+  }
   const { Input } = $.ui.resolve(e)
   return (
     <Box flexDirection="column">
-      {buttons}
-      {!where && (
-        <Input
-          key="chat-join"
-          placeholder="Join a friend's room: code [relay link]"
-          submitLabel="join"
-          onSubmit={value => void fromMenu($, () => joinFromMenu($, value))}
-        />
-      )}
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+        {actions}
+        {!where && <Text dimColor>or</Text>}
+        {!where && (
+          <Box width={34}>
+            <Input
+              key="chat-join"
+              placeholder="Join with a code, like quiet-river-tall-moon"
+              submitLabel="join"
+              onSubmit={value => void fromMenu($, () => joinFromMenu($, value))}
+            />
+          </Box>
+        )}
+      </Box>
       {trouble && (
-        <Input
-          key="chat-relay"
-          placeholder="Relay link not answering? Paste the new one: https://….trycloudflare.com"
-          submitLabel="use"
-          onSubmit={value => void fromMenu($, () => relayFromMenu($, value))}
-        />
+        <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+          <Text dimColor>Relay link not answering?</Text>
+          <Box width={46}>
+            <Input
+              key="chat-relay"
+              placeholder="Paste the new https://….trycloudflare.com link"
+              submitLabel="use"
+              onSubmit={value => void fromMenu($, () => relayFromMenu($, value))}
+            />
+          </Box>
+        </Box>
       )}
     </Box>
   )
@@ -396,7 +424,7 @@ async function composer($: $, e: RenderInput, where: string) {
   return (
     <Input
       key={`compose-${count}`}
-      placeholder={`Message room ${where} as ${me}`}
+      placeholder={`Message room ${codeOf(where)} as ${me}`}
       submitLabel="send"
       autoFocus
       onSubmit={value => void submitFromPane($, value, count)}
@@ -415,13 +443,36 @@ async function submitFromPane($: $, value: string, count: number) {
   }
 }
 
-function inviteText(code: string) {
+function inviteText(where: string) {
   return [
-    `Join my Claude Code chat room: ${code}`,
+    `Join my Claude Code chat: ${codeOf(where)}`,
     `1. Install the plugin once: ${INSTALL}`,
     '   (desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
-    `2. Join the room: /chat join ${code}${isLocalRelay() ? '' : ` ${config.server}`}  (capitals matter)`,
+    `2. Join: ${joinLine(where)}`,
   ].join('\n')
+}
+
+// What people type to join the room: a hosted chat's code alone, else the room and its relay.
+function joinLine(where: string) {
+  if (where === MAIN) return `/chat join ${codeOf(where)}`
+  return `/chat join ${where}${isLocalRelay() ? '' : ` ${config.server}`}`
+}
+
+// The code people know a room by: a hosted chat's tunnel name (or its relay's link), else the room's own.
+function codeOf(where: string) {
+  if (where !== MAIN) return where
+  const host = hostOf(config.server)
+  return host.endsWith(TUNNEL_HOST) ? host.slice(0, -TUNNEL_HOST.length) : config.server
+}
+
+// What /chat join was given: a hosted chat's code or link, or a room code with an optional link.
+function joinTarget(wanted: string) {
+  const [first = '', link] = wanted.trim().split(/\s+/)
+  const word = first.replace(/^#/, '')
+  if (isRelayLink(word)) return { server: relayLink(word), where: MAIN }
+  if (TUNNEL.test(word.toLowerCase())) return { server: `https://${word.toLowerCase()}${TUNNEL_HOST}`, where: MAIN }
+  if (CODE.test(word)) return { server: link ? relayLink(link) : config.server, where: word }
+  throw new Error('A code looks like quiet-river-tall-moon: the words of the invite, with their dashes.')
 }
 
 function isLocalRelay() {
@@ -472,8 +523,8 @@ async function useRelay($: $, server: string) {
 
 // The pane's Copy invite: the surface's clipboard, else the Mac's own (the
 // desktop app's surface may have no clipboard path), else say where to copy it.
-async function copyInvite($: $, code: string, surface: RenderSurface) {
-  const text = inviteText(code)
+async function copyInvite($: $, where: string, surface: RenderSurface) {
+  const text = inviteText(where)
   const copied = await $.ui.copy({ text, surface }).catch(() => ({ isCopied: false as const }))
   let isCopied = copied.isCopied
   if (!isCopied) {
@@ -550,7 +601,7 @@ async function pollOnce($: $) {
     await update($, unread, n => n + news.length)
     const last = news[news.length - 1]!
     $.ui.toast(
-      news.length === 1 ? `💬 ${last.from}: ${clip(last.text, 100)}` : `💬 ${news.length} new messages in room ${where}`,
+      news.length === 1 ? `💬 ${last.from}: ${clip(last.text, 100)}` : `💬 ${news.length} new messages in room ${codeOf(where)}`,
     )
   }
 }
@@ -580,7 +631,7 @@ async function pollGuarded($: $) {
     if (error instanceof RelayError && error.status === 404 && where) {
       // The relay restarted or the room sat empty past its time: the code is gone.
       await leaveRoom($)
-      $.ui.toast(`Room ${where} no longer exists. /chat new makes another.`)
+      $.ui.toast(`Room ${codeOf(where)} no longer exists. /chat new makes another.`)
     } else {
       const reason = reasonOf(error) || 'unreachable'
       if (!(await read($, problem))) $.ui.toast(clip(reason, 200))
@@ -600,8 +651,8 @@ async function barText($: $) {
     read($, problem),
   ])
   if (!where) return 'chat: no room'
-  if (trouble) return `chat ${where}: can't reach the relay`
-  return `chat ${where} · ${people.length} online${count > 0 ? ` · ${count} new` : ''}`
+  if (trouble) return `chat ${codeOf(where)}: can't reach the relay`
+  return `chat ${codeOf(where)} · ${people.length} online${count > 0 ? ` · ${count} new` : ''}`
 }
 
 // A menu item: closes the menu, runs, and says what went wrong in a toast.
@@ -622,26 +673,18 @@ async function startChat($: $, surface: RenderSurface) {
   await openPane($)
 }
 
+// Hosts a chat here (starting this computer's relay and link, or reusing them while
+// they answer) and joins it; the link's name is the code people join by.
 async function startSession($: $) {
-  if (!(await relayAnswers($, config.server))) {
-    if (isHosting) throw new Error('Already starting a relay here; one moment.')
-    isHosting = true
-    try {
-      $.ui.toast('Starting a chat relay and public link on this computer…')
-      await useRelay($, await hostHere($, 'start'))
-    } finally {
-      isHosting = false
-    }
-  }
-  return newRoom($)
-}
-
-async function relayAnswers($: $, server: string) {
+  if (isHosting) throw new Error('Already starting your chat; one moment.')
+  isHosting = true
   try {
-    await relay($, 'GET', '/health', undefined, server)
-    return true
-  } catch {
-    return false
+    $.ui.toast('Starting your chat on this computer…')
+    const link = await hostHere($, 'start')
+    await enter($, link, MAIN)
+    return MAIN
+  } finally {
+    isHosting = false
   }
 }
 
@@ -665,6 +708,11 @@ async function whoFromMenu($: $) {
   $.ui.toast(await whoText($))
 }
 
+async function setMinimized($: $, value: boolean) {
+  await update($, minimized, () => value)
+  await $.store.set('minimized', value)
+}
+
 async function relayFromMenu($: $, value: string) {
   await changeRelay($, relayLink(value))
   $.ui.toast(`Using the relay at ${config.server}.`)
@@ -678,7 +726,7 @@ async function joinFromMenu($: $, value: string) {
 async function leaveFromMenu($: $) {
   const where = await read($, room)
   await leaveRoom($)
-  $.ui.toast(`Left room ${where}.`)
+  $.ui.toast(`Left room ${codeOf(where)}.`)
 }
 
 async function sendMessage($: $, text: string, via?: 'claude') {
@@ -693,40 +741,42 @@ async function sendMessage($: $, text: string, via?: 'claude') {
   })
   retryAt = 0
   await poll($)
-  return where
-}
-
-async function newRoom($: $) {
-  const data = await relay($, 'POST', '/rooms', {})
-  const code = String(data.code ?? '')
-  if (!CODE.test(code)) throw new Error('the relay did not hand back a room code')
-  return join($, code)
+  return codeOf(where)
 }
 
 async function join($: $, wanted: string) {
-  const [first = '', link] = wanted.trim().split(/\s+/)
-  const code = first.replace(/^#/, '')
-  if (!CODE.test(code)) throw new Error('A code is 4 letters or digits, like Ab3x. Capitals matter.')
-  const server = link ? relayLink(link) : config.server
-  const was = await read($, room)
-  if (was === code && server === config.server) return code
-  if (server !== config.server) await reachRelay($, server)
+  const { server, where } = joinTarget(wanted)
+  const code = where === MAIN ? hostOf(server).replace(TUNNEL_HOST, '') : where
   try {
-    // Check the code before leaving the room we are in.
-    await relay($, 'GET', `/rooms/${encodeURIComponent(code)}?after=0&name=${encodeURIComponent(config.me)}`, undefined, server)
+    // Check the room answers before leaving the one we are in.
+    await relay($, 'GET', `/rooms/${encodeURIComponent(where)}?after=0&name=${encodeURIComponent(config.me)}`, undefined, server)
   } catch (error) {
     if (error instanceof RelayError && error.status === 404) {
-      throw new Error(`No room has the code ${code}. Check the capitals; the room may also have expired.`)
+      throw new Error(
+        where === MAIN
+          ? `${code} is an older relay without hosted chats; ask its host to update the plugin.`
+          : `No room has the code ${code}. Check the capitals; the room may also have expired.`,
+      )
+    }
+    if (where === MAIN && !(error instanceof RelayError)) {
+      throw new Error(`Nobody is hosting ${code} right now: check the code, or the host's computer may be asleep.`)
     }
     throw error
   }
+  await enter($, server, where)
+  return codeOf(where)
+}
+
+// Moves this chat into a room on a relay: leaves the room it was in, then reads the new one.
+async function enter($: $, server: string, where: string) {
+  const was = await read($, room)
+  if (was === where && server === config.server) return
   await leave($, was)
   if (server !== config.server) await useRelay($, server)
-  await switchTo($, code)
-  await $.store.set('room', code)
+  await switchTo($, where)
+  await $.store.set('room', where)
   retryAt = 0
   await poll($)
-  return code
 }
 
 async function rename($: $, wanted: string) {
@@ -740,7 +790,7 @@ async function rename($: $, wanted: string) {
     const people = await read($, online)
     // Nobody else's name, whatever its capitals: the room should not see two people with one name.
     if (people.some(n => n !== was && n.toLowerCase() === name.toLowerCase())) {
-      throw new Error(`Someone in room ${where} is already called ${name}. Pick another name.`)
+      throw new Error(`Someone in room ${codeOf(where)} is already called ${name}. Pick another name.`)
     }
     await leave($, where) // the old name leaves the online list
   }
@@ -748,7 +798,7 @@ async function rename($: $, wanted: string) {
   await update($, nickname, () => name)
   await $.store.set('name', name)
   if (where) await poll($) // and the new one joins it
-  return `You are now ${name}${where ? ` in room ${where}` : ''} (was ${was}).`
+  return `You are now ${name}${where ? ` in room ${codeOf(where)}` : ''} (was ${was}).`
 }
 
 async function leaveRoom($: $) {
@@ -776,7 +826,7 @@ async function openPane($: $) {
   await update($, isOpen, () => true)
   await markRead($)
   const where = await read($, room)
-  return $.ui.open({ id: PANE, title: where ? `Chat ${where}` : 'Chat', focus: true })
+  return $.ui.open({ id: PANE, title: where ? `Chat ${codeOf(where)}` : 'Chat', focus: true })
 }
 
 async function markRead($: $) {
@@ -787,16 +837,16 @@ async function transcript($: $, limit: number) {
   const where = await read($, room)
   if (!where) return NO_ROOM
   const list = (await read($, messages)).slice(-limit)
-  if (list.length === 0) return `No messages in room ${where} yet.`
-  return [`Room ${where}, last ${list.length}:`, ...list.map(formatLine)].join('\n')
+  if (list.length === 0) return `No messages in room ${codeOf(where)} yet.`
+  return [`Room ${codeOf(where)}, last ${list.length}:`, ...list.map(formatLine)].join('\n')
 }
 
 async function whoText($: $) {
   const where = await read($, room)
   if (!where) return NO_ROOM
-  if (await read($, problem)) return `Can't reach the relay, so who's in room ${where} is unknown right now.`
+  if (await read($, problem)) return `Can't reach the relay, so who's in room ${codeOf(where)} is unknown right now.`
   const people = await read($, online)
-  return people.length === 0 ? `Nobody is online in room ${where}.` : `Online in room ${where}: ${people.join(', ')}`
+  return people.length === 0 ? `Nobody is online in room ${codeOf(where)}.` : `Online in room ${codeOf(where)}: ${people.join(', ')}`
 }
 
 function failedTool() {

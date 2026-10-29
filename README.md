@@ -4,10 +4,10 @@
 
 ### Chat with your team without leaving Claude Code.
 
-One click starts a room. Friends join with a 4-character code.<br>
+One click starts a chat. Friends join with its code, like <code>quiet-river-tall-moon</code>.<br>
 Messages pop up while you work, and Claude can read and reply for you.
 
-<img src="docs/two-people.gif" width="860" alt="Sahin and Jake chat in room 07xw from two computers; each message pops up on the other's screen">
+<img src="docs/two-people.gif" width="860" alt="Sahin and Jake chat in quiet-river-tall-moon from two computers; each message pops up on the other's screen">
 
 <sub>Animated illustration of the real chat pane, bar and popups.<br>A community plugin by <a href="https://github.com/lovieco">Lovie</a>, not made or endorsed by Anthropic.</sub>
 
@@ -15,9 +15,9 @@ Messages pop up while you work, and Claude can read and reply for you.
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-D97757?style=flat-square)
 ![Relay with zero dependencies](https://img.shields.io/badge/relay-zero_dependencies-3B82F6?style=flat-square)
-![Room codes](https://img.shields.io/badge/rooms-4--character_codes-6E56CF?style=flat-square)
+![Join with one code](https://img.shields.io/badge/join-with_one_code-6E56CF?style=flat-square)
 ![Free to host](https://img.shields.io/badge/hosting-free-2E8B57?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-17_passing-2E8B57?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-16_passing-2E8B57?style=flat-square)
 
 **[Install](#one-line-setup)** · **[First chat](#your-first-chat-in-30-seconds)** · **[How it works](#how-it-works)** · **[Commands](#commands)** · **[Hosting](#hosting)** · **[FAQ](#faq)**
 
@@ -67,10 +67,10 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | | Emily (hosts) | Jake (joins) |
 | :-: | --- | --- |
 | **1** | Clicks the chat bar above the prompt → **Start a new session** | Installs the plugin ([one line](#one-line-setup)) |
-| **2** | The invite is on her clipboard; she pastes it to Jake in Slack | Pastes the join line from the invite: `/chat join K7pm https://…` |
+| **2** | The invite is on her clipboard; she pastes it to Jake in Slack | Types the code from the invite: `/chat join quiet-river-tall-moon` |
 | **3** | Jake's messages pop up for her | Emily's messages pop up for him |
 
-**Start a new session** does the hosting for Emily: if no relay answers, it starts one on her computer with a free public link, makes a room, copies the invite and opens the chat pane. Jake pastes the link only once; after that his Claude Code remembers the relay.
+**Start a new session** does the hosting for Emily: it starts a relay on her computer with a free public link (or reuses them while they answer), copies the invite and opens the chat pane. The code is the public link's name, so the code is all Jake needs: no links, no settings.
 
 ---
 
@@ -80,9 +80,9 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | --- | --- |
 | 🔔 **Popups** | New messages pop up wherever you are in Claude Code |
 | 🪟 **Chat pane** | `/chat` opens the room: messages, who's online, a box to type in, a Copy invite button |
-| 🎛️ **Chat bar** | Above the prompt: `chat 07xw · 2 online · 1 new ▾`, with the latest messages just above it. Click it for a menu |
+| 🎛️ **Chat bar** | One line above the prompt: the latest message, then `chat quiet-river-tall-moon · 2 online · 1 new ▾`. Click it for a menu; **−** shrinks it to the room alone |
 | 🤖 **Claude chats for you** | *"tell the room the deploy is out"*, *"what did Jake say?"* |
-| 🔑 **Rooms by code** | 4 characters, capitals matter (`K7pm` ≠ `k7pm`) |
+| 🔑 **One code to join** | Four words like `quiet-river-tall-moon`: the name of the host's public link |
 | 🏷️ **Your name** | `/chat name Emily`, kept for next time, unique in the room |
 | 🛰️ **One-click hosting** | A relay and a free public link on your computer, nothing to sign up for |
 
@@ -123,12 +123,12 @@ sequenceDiagram
     participant R as 🛰️ Relay
     participant J as 💻 Jake's Claude Code
     E->>R: Start a new session
-    R-->>E: room K7pm
+    R-->>E: code quiet-river-tall-moon
     E-)J: invite over Slack, iMessage, email…
-    J->>R: /chat join K7pm https://…
+    J->>R: /chat join quiet-river-tall-moon
     E->>R: "hey jake, can you see this?"
     loop every 2 seconds
-        J->>R: anything new in K7pm?
+        J->>R: anything new?
     end
     R-->>J: 1 new message from emily
     Note over J: 💬 popup + chat pane
@@ -164,9 +164,9 @@ Type `/chat` and the hint after it shows only what works right now.
 | Command | What it does |
 | --- | --- |
 | `/chat` | Open the chat pane |
-| `/chat new` | Start a new session: a room (hosting it here if needed) and its invite |
-| `/chat join K7pm` | Join a room by its code, on the relay you use |
-| `/chat join K7pm https://link` | Join a room on the relay at that link, and keep using that relay |
+| `/chat new` | Host a chat here: start a new session and get its code and invite |
+| `/chat join quiet-river-tall-moon` | Join a chat by its code (a host's public link works too) |
+| `/chat join Ab3x https://link` | Join a room on a relay run by hand (capitals matter) |
 | `/chat invite` | Print the invite to send a friend |
 | `/chat hello everyone` | Send a message |
 | `/chat say who` | Send a message that starts with a command word |
@@ -179,15 +179,13 @@ Type `/chat` and the hint after it shows only what works right now.
 
 ---
 
-## 🔐 Room codes and safety
+## 🔐 Codes and safety
 
-A room code is **4 characters** from `A–Z`, `a–z` and `0–9`, and **capitals matter**. That's about **14.7 million** codes, and the code is the room's key, so the relay guards it:
+A hosted chat's code is the name Cloudflare gives its free public link: four random words like `quiet-river-tall-moon`. **Anyone who has the code can join**, so share it only with the people you're chatting with. It changes whenever the host's link restarts (say, after their computer sleeps).
 
-- 🎲 **Only the relay makes codes**, at random. Nobody can pick one.
-- 🚫 **Guessing is blocked:** an address that tries more than 20 codes that don't exist in 10 minutes is turned away for a while.
-- ⏳ **Rooms expire** after 24 hours with nobody in them, and a relay restart clears every room.
 - 🏷️ **Names are unique per room:** `/chat name` refuses a name someone else in the room already uses, whatever its capitals.
 - 🤖 **Claude's posts are labeled**, and what others write reaches Claude only when you ask it to read the room.
+- 🎲 **Rooms on a relay run by hand** use 4-character codes (`A–Z`, `a–z`, `0–9`, capitals matter) that only the relay makes, at random. An address that tries more than 20 codes that don't exist in 10 minutes is turned away for a while, and such rooms expire after 24 idle hours.
 
 ---
 
@@ -196,8 +194,8 @@ A room code is **4 characters** from `A–Z`, `a–z` and `0–9`, and **capital
 
 **Start a new session** (or `/chat new`) hosts for you. It runs [`server/host.sh`](server/host.sh), which:
 
-1. starts the relay on your computer if none answers there,
-2. opens a free public `https://….trycloudflare.com` link to it, or reuses the last one while it still answers,
+1. starts the relay on your computer if none answers there (on the next free port if another program holds `47800`),
+2. opens a free public `https://….trycloudflare.com` link to it, or reuses the last one while it still answers. **The link's name is your chat's code.**
 3. keeps both running in the background, even after Claude Code closes.
 
 It needs **Node.js** and **cloudflared** (`brew install cloudflared`). `/chat stop` stops both. A free link dies when your computer sleeps; the next **Start a new session** opens a new one.
@@ -266,11 +264,11 @@ The relay's link stopped answering, usually because the hosting computer slept. 
 </details>
 
 <details>
-<summary><b>"No room has the code …"</b></summary>
+<summary><b>"Nobody is hosting … right now"</b></summary>
 
 <br>
 
-Check the capitals (`07xw` is not `07XW`) and that you both use the same relay: `/chat relay` shows yours. Rooms also disappear when the relay restarts or after 24 idle hours.
+The code is wrong, or the host's public link stopped (usually because their computer slept). The host presses **Start a new session** and sends the new code.
 
 </details>
 
@@ -289,7 +287,7 @@ Yes. The plugin and relay are free, and Cloudflare's quick tunnels need no accou
 
 ```bash
 claude plugin validate .   # flags the claude- name prefix as reserved; installs still work
-claude plugin test .       # 17 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
+claude plugin test .       # 16 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
 node server/relay.mjs      # run a relay by hand
 ```
 
