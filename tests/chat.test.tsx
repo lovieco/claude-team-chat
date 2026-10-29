@@ -6,6 +6,7 @@ type Message = { id: number; from: string; text: string; at: number; via?: 'clau
 
 const OPTIONS = { server: 'http://relay.test', name: 'ana', room: '', token: 'secret' }
 const CODE = 'quiet-river-tall-moon'
+const ACTION = (id: string) => ({ href: `https://claude-team-chat.invalid/${id}` })
 const LINK = `https://${CODE}.trycloudflare.com`
 
 // A relay in memory, answering $.http.fetch beneath the plugin the way server/relay.mjs
@@ -284,9 +285,13 @@ describe('claude-team-chat', () => {
     expect(seen.toasts).toEqual([])
     await ui.unmount()
 
+    // in the desktop app the actions are one line of text links, a space either side of each dot
     const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
     await desktop.press({ key: 'chat-bar' })
-    expect(await desktop.find({ key: 'chat-invite' })).toBeDefined()
+    const links = await desktop.find({ key: 'chat-actions' })
+    expect(links?.props.text).toContain('[Open chat](https://claude-team-chat.invalid/open) · [Copy invite]')
+    await desktop.press({ key: 'chat-actions', link: ACTION('who') })
+    expect(await noticeOf($)).toBe(`Online in room ${CODE}: ana, bo`)
     await desktop.unmount()
   })
 
@@ -337,7 +342,7 @@ describe('claude-team-chat', () => {
       expect(relay.posts.at(-1)?.body).toEqual({ from: 'ana', text: `fine, thanks (${surface})` })
       // a fresh, empty box takes its place, and the menu stays open
       expect((await ui.find({ type: 'Input' }))?.key).not.toBe(field!.key)
-      expect(await ui.find({ key: 'chat-open' })).toBeDefined()
+      expect(await ui.find({ key: surface === 'terminal' ? 'chat-open' : 'chat-actions' })).toBeDefined()
       await ui.press({ key: 'chat-bar' }) // close the menu for the next surface
       await ui.unmount()
     }
@@ -351,13 +356,13 @@ describe('claude-team-chat', () => {
 
     const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
     await ui.press({ key: 'chat-bar' })
-    await ui.press({ key: 'chat-who' })
+    await ui.press({ key: 'chat-actions', link: ACTION('who') })
     expect((await ui.find({ key: 'chat-notice' }))?.text).toContain(`Online in room ${CODE}: ana, bo`)
     await ui.press({ key: 'chat-notice-close' })
     expect(await ui.find({ key: 'chat-notice' })).toBeUndefined()
 
     await ui.press({ key: 'chat-bar' })
-    await ui.press({ key: 'chat-who' })
+    await ui.press({ key: 'chat-actions', link: ACTION('who') })
     await seen.clock.advance(7_000)
     expect(await noticeOf($)).toBe(`Online in room ${CODE}: ana, bo`)
     await seen.clock.advance(1_500)

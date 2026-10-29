@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderInput, RenderSurface, UiPressArgument } from 'claude-code'
+import type { EngineInterface, Register, RenderInput, RenderSurface } from 'claude-code'
 
 import type { ChatMessage } from '../types'
 
@@ -10,6 +10,8 @@ const POLL_MS = 2000
 const RETRY_MS = 10_000
 const KEEP = 200
 const NOTICE_MS = 8000 // how long a notice above the bar stays
+// The menu's links in a graphical app: answered by the plugin, never opened (.invalid never resolves).
+const ACTION_LINK = 'https://claude-team-chat.invalid/'
 const CODE = /^[A-Za-z0-9]{4}$/ // a room on a relay run by hand: /chat join Ab3x <link>
 const MAIN = 'main' // the room every relay has; a hosted chat is this room
 const TUNNEL = /^[a-z0-9]+(?:-[a-z0-9]+)+$/ // a hosted chat's code: its tunnel's name
@@ -376,36 +378,43 @@ export const register: Register = (on, options) => {
 async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   const { Box, Button, Text } = $.ui.resolve(e)
   const [where, trouble] = await Promise.all([read($, room), read($, problem)])
-  // Small text links in one row, like the bar itself, with dots between them. In a
-  // room, starting another is the rare choice, so it comes last.
-  const item = (key: string, label: string, onPress: (press: UiPressArgument) => void) => (
-    <Button key={key} plain onPress={onPress}>
-      <Text size="footnote">{label}</Text>
-    </Button>
-  )
-  const start = item('chat-start', 'Start a new session', press => void fromMenu($, () => startChat($, press.surface)))
-  const links = where
+  // The actions, one per room state. In the terminal they are plain text buttons; a
+  // graphical app pads every button, so there they are one line of text whose words
+  // are links the plugin answers, a single space either side of each dot.
+  const acts: { id: string; label: string; run: (surface: RenderSurface) => Promise<unknown> }[] = where
     ? [
-        item('chat-open', 'Open chat', () => void fromMenu($, () => openPane($))),
-        item('chat-invite', 'Copy invite', press => void fromMenu($, () => copyInvite($, where, press.surface))),
-        item('chat-who', "Who's here", () => void fromMenu($, () => whoFromMenu($))),
-        item('chat-leave', 'Leave room', () => void fromMenu($, () => leaveFromMenu($))),
-        start,
+        { id: 'open', label: 'Open chat', run: () => openPane($) },
+        { id: 'invite', label: 'Copy invite', run: surface => copyInvite($, where, surface) },
+        { id: 'who', label: "Who's here", run: () => whoFromMenu($) },
+        { id: 'leave', label: 'Leave room', run: () => leaveFromMenu($) },
+        { id: 'start', label: 'Start a new session', run: surface => startChat($, surface) },
       ]
-    : [start]
-  // A graphical surface pads each link already, so its dots need no spaces; the
-  // terminal draws plain links tight, so there the dots carry one space each side.
-  const dot = e.surface === 'terminal' ? ' · ' : '·'
-  const actions = links.flatMap((link, i) =>
-    i === 0
-      ? [link]
-      : [
-          <Text key={`dot-${i}`} dimColor size="footnote">
-            {dot}
-          </Text>,
-          link,
-        ],
-  )
+    : [{ id: 'start', label: 'Start a new session', run: surface => startChat($, surface) }]
+  let actions
+  if (e.surface === 'terminal') {
+    actions = acts.flatMap((act, i) => {
+      const link = (
+        <Button key={`chat-${act.id}`} plain onPress={press => void fromMenu($, () => act.run(press.surface))}>
+          {act.label}
+        </Button>
+      )
+      return i === 0 ? [link] : [<Text key={`dot-${i}`} dimColor>{' · '}</Text>, link]
+    })
+  } else {
+    const { Markdown } = $.ui.resolve(e)
+    const hrefs = acts.map(act => `${ACTION_LINK}${act.id}`)
+    actions = [
+      <Markdown
+        key="chat-actions"
+        text={acts.map((act, i) => `[${act.label}](${hrefs[i]})`).join(' · ')}
+        pressableLinks={hrefs}
+        onLinkPress={(link, press) => {
+          const act = acts[hrefs.indexOf(link.href)]
+          if (act) void fromMenu($, () => act.run(press.surface))
+        }}
+      />,
+    ]
+  }
   if (e.surface === 'mobile') {
     return (
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap={0}>
