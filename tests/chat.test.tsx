@@ -52,6 +52,7 @@ function fakeRelay(on: On, codes: string[] = ['Ab3x', 'Zz9Q']) {
 // The engine's own answers to what the plugin asks at start.
 function engine(on: On) {
   const toasts: string[] = []
+  const logs: string[] = []
   const statuses: (string | undefined)[] = []
   const opened: string[] = []
   mock.clock(on, { now: 1_000 })
@@ -63,6 +64,10 @@ function engine(on: On) {
     toasts.push(String(e.text))
     return { value: undefined }
   })
+  on('ui.log', ($, e) => {
+    if (e.to !== 'debug') logs.push(String(e.text))
+    return { value: undefined }
+  })
   on('ui.status', ($, e) => {
     statuses.push(e.text)
     return { value: undefined }
@@ -72,7 +77,7 @@ function engine(on: On) {
     return { value: { isPlaced: true as const } }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  return { toasts, statuses, opened }
+  return { toasts, logs, statuses, opened }
 }
 
 const START = { cwd: '/work', surface: 'terminal' as const, isInteractive: true }
@@ -386,6 +391,21 @@ describe('claude-team-chat', () => {
     const read = await $.command.run(chat('read'))
     expect(read.text).toContain('bo: did the deploy go out?')
     expect(await bar($)).toBe('chat Ab3x · 2 online')
+  })
+
+  test('a message from someone else shows live in the conversation, once', { options: OPTIONS }, async ($, on) => {
+    const relay = fakeRelay(on)
+    const seen = engine(on)
+    await $.session.start(START)
+    await $.command.run(chat('new'))
+    await $.command.run(chat('hello'))
+
+    relay.say('Ab3x', 'bo', 'did the deploy go out?')
+    await $.command.run(chat('who'))
+    await $.command.run(chat('who'))
+
+    expect(seen.logs).toHaveLength(1)
+    expect(seen.logs[0]).toMatch(/^💬 Ab3x · \[\d\d:\d\d\] bo: did the deploy go out\?$/)
   })
 
   test('Claude reads with an untrusted-text note and sends marked as Claude', { options: OPTIONS }, async ($, on) => {

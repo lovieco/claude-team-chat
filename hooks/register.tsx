@@ -546,6 +546,8 @@ async function pollOnce($: $) {
 
   // The first read of a room is its backlog: nothing there is news.
   const news = isFresh && known === '' ? [] : incoming.filter(m => m.from !== config.me && (isFresh || m.id > after))
+  // Each one a dim line in the conversation as it lands: Claude never reads it, and it starts no turn.
+  for (const m of news) $.ui.log(`💬 ${where} · ${formatLine(m)}`)
   if (news.length > 0 && !(await read($, isOpen))) {
     await update($, unread, n => n + news.length)
     const last = news[news.length - 1]!
