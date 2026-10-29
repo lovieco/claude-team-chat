@@ -132,6 +132,16 @@ export const register: Register = (on, options) => {
       },
     })
     await $.tool.register({
+      name: 'chat_join',
+      description:
+        "Join a claude-team-chat room the user asks to join: by its code (like quiet-river-tall-moon), a relay link, or an invite they pasted. Only join when the user asks; it leaves the room they are in.",
+      inputSchema: {
+        type: 'object',
+        properties: { code: { type: 'string', description: 'The code, a link, or the whole invite text.' } },
+        required: ['code'],
+      },
+    })
+    await $.tool.register({
       name: 'chat_who',
       description: 'List who is online in the claude-team-chat room the user is in.',
       inputSchema: { type: 'object', properties: {} },
@@ -244,6 +254,15 @@ export const register: Register = (on, options) => {
     const body = await transcript($, Math.min(100, Math.max(1, Math.round(asked))))
     const note = trouble ? `(relay unreachable: ${trouble}; showing what was last read)\n` : ''
     return { result: `${note}${UNTRUSTED}\n\n${body}` }
+  }).catch(failedTool)
+
+  on('tool.call', { tool: 'mcp__claude-team-chat__chat_join' }, async ($, e) => {
+    try {
+      const code = await join($, typeof e.code === 'string' ? e.code : '')
+      return { result: `Joined room ${code} as ${config.me}. New messages pop up as they arrive.` }
+    } catch (error) {
+      return { deny: `claude-team-chat: ${reasonOf(error)}` }
+    }
   }).catch(failedTool)
 
   on('tool.call', { tool: 'mcp__claude-team-chat__chat_who' }, async $ => {
@@ -509,12 +528,13 @@ async function submitFromPane($: $, value: string, count: number) {
   }
 }
 
+// Starts with the join command, so pasting the whole invite into Claude Code joins.
 function inviteText(where: string) {
   return [
-    `Join my Claude Code chat: ${codeOf(where)}`,
-    `1. Install the plugin once: ${INSTALL}`,
-    '   (desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
-    `2. Join: ${joinLine(where)}`,
+    joinLine(where),
+    `Claude Code chat invite from ${config.me}: paste this whole message into Claude Code to join.`,
+    `First time? Install the plugin once: ${INSTALL}`,
+    '(desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
   ].join('\n')
 }
 
@@ -532,8 +552,11 @@ function codeOf(where: string) {
 }
 
 // What /chat join was given: a hosted chat's code or link, or a room code with an optional link.
+// Takes a code, a code and a link, or a whole pasted invite (its "/chat join …" line).
 function joinTarget(wanted: string) {
-  const [first = '', link] = wanted.trim().split(/\s+/)
+  const fromInvite = wanted.match(/\/chat\s+join\s+([^\n]+)/)
+  const [first = '', ...rest] = (fromInvite?.[1] ?? wanted).trim().split(/\s+/)
+  const link = rest.find(isRelayLink)
   const word = first.replace(/^#/, '')
   if (isRelayLink(word)) return { server: relayLink(word), where: MAIN }
   if (TUNNEL.test(word.toLowerCase())) return { server: `https://${word.toLowerCase()}${TUNNEL_HOST}`, where: MAIN }

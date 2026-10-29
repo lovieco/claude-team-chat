@@ -142,7 +142,7 @@ describe('claude-team-chat', () => {
     expect(await noticeOf($)).toBe('Starting your chat on this computer…')
     expect(seen.toasts).toEqual([])
     expect(made).toContain(`Its code: ${CODE}`)
-    expect(made).toContain(`2. Join: /chat join ${CODE}`)
+    expect(made).toContain(`/chat join ${CODE}\n`)
     expect(await bar($)).toBe(`chat ${CODE} · 2 online`)
 
     expect((await $.command.run(chat('hello there'))).text).toBe(`Sent to room ${CODE}.`)
@@ -157,16 +157,38 @@ describe('claude-team-chat', () => {
     expect((await $.command.run(chat(`join ${CODE}`))).text).toBe(`Joined room ${CODE} as ana.`)
     await $.command.run(chat('who'))
     expect(relay.hosts.at(-1)).toBe(LINK)
-    expect((await $.command.run(chat('invite'))).text).toBe(
+    const invite = (await $.command.run(chat('invite'))).text ?? ''
+    expect(invite).toBe(
       [
-        `Join my Claude Code chat: ${CODE}`,
-        '1. Install the plugin once: /plugin install claude-team-chat --marketplace lovieco/claude-team-chat',
-        '   (desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
-        `2. Join: /chat join ${CODE}`,
+        `/chat join ${CODE}`,
+        'Claude Code chat invite from ana: paste this whole message into Claude Code to join.',
+        'First time? Install the plugin once: /plugin install claude-team-chat --marketplace lovieco/claude-team-chat',
+        '(desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
       ].join('\n'),
     )
     // a link works as the code too
     expect((await $.command.run(chat(`join ${LINK}/`))).text).toBe(`Joined room ${CODE} as ana.`)
+  })
+
+  test('pasting a whole invite joins, as a command or by asking Claude', { options: OPTIONS }, async ($, on) => {
+    const relay = fakeRelay(on)
+    engine(on)
+    await $.session.start(START)
+    const invite = [
+      `/chat join ${CODE}`,
+      'Claude Code chat invite from bo: paste this whole message into Claude Code to join.',
+      'First time? Install the plugin once: /plugin install claude-team-chat --marketplace lovieco/claude-team-chat',
+    ].join('\n')
+
+    // the whole invite pasted at the prompt runs as /chat with the rest as arguments
+    expect((await $.command.run(chat(invite.slice('/chat '.length)))).text).toBe(`Joined room ${CODE} as ana.`)
+
+    // or Claude joins with its tool, given the invite as the person pasted it
+    relay.make('Ab3x')
+    const joined = await $.tool.call({ tool: 'mcp__claude-team-chat__chat_join', code: 'join me: /chat join Ab3x https://other.test (from bo)' })
+    expect(String(joined.result)).toContain('Joined room Ab3x as ana.')
+    const bad = await $.tool.call({ tool: 'mcp__claude-team-chat__chat_join', code: 'no code here' })
+    expect(bad.deny).toContain('A code looks like')
   })
 
   test('a code nobody hosts, or that is not a code, keeps you where you are', { options: OPTIONS }, async ($, on) => {
@@ -190,7 +212,7 @@ describe('claude-team-chat', () => {
 
     expect((await $.command.run(chat('join ab3x https://other.test'))).text).toContain('No room has the code ab3x. Check the capitals')
     expect((await $.command.run(chat('join Ab3x https://other.test'))).text).toBe('Joined room Ab3x as ana.')
-    expect((await $.command.run(chat('invite'))).text).toContain('2. Join: /chat join Ab3x https://other.test')
+    expect((await $.command.run(chat('invite'))).text).toContain('/chat join Ab3x https://other.test')
     await $.command.run(chat(`join ${CODE}`))
     expect(relay.posts.at(-1)).toEqual({ url: 'https://other.test/rooms/Ab3x/leave', body: { name: 'ana' } })
   })

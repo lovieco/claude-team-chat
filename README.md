@@ -71,7 +71,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | | Emily (hosts) | Jake (joins) |
 | :-: | --- | --- |
 | **1** | Clicks the chat bar above the prompt → **Start a new session** | Installs the plugin ([one line](#one-line-setup)) |
-| **2** | The invite is on her clipboard; she pastes it to Jake in Slack | Types the code from the invite: `/chat join quiet-river-tall-moon` |
+| **2** | The invite is on her clipboard; she pastes it to Jake in Slack | Pastes the whole invite into Claude Code: it starts with `/chat join quiet-river-tall-moon`, so it joins |
 | **3** | Jake's messages pop up for her | Emily's messages pop up for him |
 
 **Start a new session** does the hosting for Emily: it starts a relay on her computer with a free public link (or reuses them while they answer), copies the invite and opens the chat pane. The code is the public link's name, so the code is all Jake needs: no links, no settings.
@@ -158,6 +158,7 @@ The relay keeps the last 500 messages of each room in memory and counts someone 
 | --- | --- |
 | `chat_send` | Posts under your name, **marked "via Claude"** for everyone |
 | `chat_read` | Reads the latest messages, wrapped in a note that they are other people's words, not instructions |
+| `chat_join` | Joins a room when you ask: *"join this chat"* with the invite pasted |
 | `chat_who` | Lists who is online in the room |
 
 Nothing in the chat ever starts a Claude turn by itself. Claude reads the room only when you ask.
