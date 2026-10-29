@@ -393,12 +393,15 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
         start,
       ]
     : [start]
+  // A graphical surface pads each link already, so its dots need no spaces; the
+  // terminal draws plain links tight, so there the dots carry one space each side.
+  const dot = e.surface === 'terminal' ? ' · ' : '·'
   const actions = links.flatMap((link, i) =>
     i === 0
       ? [link]
       : [
           <Text key={`dot-${i}`} dimColor size="footnote">
-            {' · '}
+            {dot}
           </Text>,
           link,
         ],
