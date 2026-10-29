@@ -52,6 +52,10 @@ const HINT_IN_ROOM = '<message>  ·  who  ·  read  ·  invite  ·  name <you>  
 
 const NO_ROOM = 'Not in a chat yet: /chat new starts one, /chat join <code> joins one.'
 const INSTALL = '/plugin install claude-team-chat --marketplace lovieco/claude-team-chat'
+const UPDATE = 'claude plugin update claude-team-chat@claude-team-chat'
+// The newest manifest, to tell an old copy of the plugin that a newer one is out.
+const LATEST = 'https://raw.githubusercontent.com/lovieco/claude-team-chat/main/.claude-plugin/plugin.json'
+const UPDATE_NOTICE_MS = 10 * 60 * 1000
 const LOCAL_ONLY =
   "The relay runs on this computer only, so friends on other computers can't reach it. Once it has a public link: /chat relay <link>."
 
@@ -149,6 +153,7 @@ export const register: Register = (on, options) => {
 
     $.clock.every(POLL_MS, () => void tick($))
     void tick($)
+    void checkForUpdate($)
 
     return next(e)
   })
@@ -533,8 +538,9 @@ function inviteText(where: string) {
   return [
     joinLine(where),
     `Claude Code chat invite from ${config.me}: paste this whole message into Claude Code to join.`,
-    `First time? Install the plugin once: ${INSTALL}`,
+    `New to it? Install: ${INSTALL}`,
     '(desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
+    `Have it already? Get the latest: ${UPDATE}, then restart Claude Code`,
   ].join('\n')
 }
 
@@ -799,9 +805,35 @@ async function whoFromMenu($: $) {
 
 // Says something in the line above the chat bar, where the person is looking, for a few
 // seconds; a newer notice takes its place. New messages still pop up as toasts.
-async function say($: $, text: string) {
+async function say($: $, text: string, forMs = NOTICE_MS) {
   await update($, notice, () => text)
-  $.clock.after(NOTICE_MS, () => void update($, notice, now => (now === text ? '' : now)))
+  $.clock.after(forMs, () => void update($, notice, now => (now === text ? '' : now)))
+}
+
+// Compares this copy's version with the newest on GitHub, once a session, and says so
+// above the bar when this one is behind. Quiet when either can't be read.
+async function checkForUpdate($: $) {
+  try {
+    const mine = String(JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)).version ?? '')
+    const answer = await $.http.fetch(LATEST)
+    if (!answer.ok) return
+    const latest = String(JSON.parse(answer.text).version ?? '')
+    if (isNewer(latest, mine)) {
+      await say($, `A newer claude-team-chat (${latest}) is out; you have ${mine}. Update: ${UPDATE}, then restart Claude Code.`, UPDATE_NOTICE_MS)
+    }
+  } catch {
+    // offline, or GitHub not answering: check again next session
+  }
+}
+
+function isNewer(latest: string, mine: string) {
+  const a = latest.split('.').map(Number)
+  const b = mine.split('.').map(Number)
+  if (a.some(Number.isNaN) || b.some(Number.isNaN)) return false
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0)
+  }
+  return false
 }
 
 async function relayFromMenu($: $, value: string) {

@@ -19,7 +19,7 @@ Messages pop up while you work, and Claude can read and reply for you.<br>
 ![Join with one code](https://img.shields.io/badge/join-with_one_code-6E56CF?style=flat-square)
 ![No login required](https://img.shields.io/badge/login-not_required-2E8B57?style=flat-square)
 ![Free to host](https://img.shields.io/badge/hosting-free_on_Cloudflare-F38020?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-16_passing-2E8B57?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-20_passing-2E8B57?style=flat-square)
 
 **[Install](#one-line-setup)** · **[First chat](#your-first-chat-in-30-seconds)** · **[How it works](#how-it-works)** · **[Commands](#commands)** · **[Cloudflare](#cloudflare)** · **[Hosting](#hosting)** · **[FAQ](#faq)**
 
@@ -33,6 +33,14 @@ Messages pop up while you work, and Claude can read and reply for you.<br>
 ```bash
 claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat
 ```
+
+**Already have it?** Get the latest, then restart Claude Code:
+
+```bash
+claude plugin update claude-team-chat@claude-team-chat
+```
+
+The plugin checks GitHub when a session starts and says so above the chat bar when a newer version is out.
 
 🔓 **No login required.** Installing, hosting and joining need no account anywhere: not GitHub, not Cloudflare, nothing to sign up for beyond Claude Code itself.
 
@@ -336,7 +344,7 @@ No. Quick Tunnels work without an account or a domain. You'd only need one for a
 
 ```bash
 claude plugin validate .   # flags the claude- name prefix as reserved; installs still work
-claude plugin test .       # 16 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
+claude plugin test .       # 20 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
 node server/relay.mjs      # run a relay by hand
 ```
 

@@ -11,7 +11,7 @@ const LINK = `https://${CODE}.trycloudflare.com`
 
 // A relay in memory, answering $.http.fetch beneath the plugin the way server/relay.mjs
 // does: every relay has its "main" room, and rooms made by hand have 4-character codes.
-function fakeRelay(on: On) {
+function fakeRelay(on: On, latest = { version: '0.2.0' }) {
   const rooms = new Map<string, Message[]>([['main', []]])
   const posts: { url: string; body: Record<string, unknown> }[] = []
   const hosts: string[] = []
@@ -25,6 +25,7 @@ function fakeRelay(on: On) {
     const method = e.init?.method ?? 'GET'
     hosts.push(url.origin)
     if (url.hostname.startsWith('gone')) return { deny: `ENOTFOUND: getaddrinfo ENOTFOUND ${url.hostname}` }
+    if (url.hostname === 'raw.githubusercontent.com') return answer(200, { name: 'claude-team-chat', version: latest.version })
     if (parts[0] === 'health') return answer(200, { ok: true, epoch: 'e1', main: true })
     const list = rooms.get(parts[1] ?? '')
     if (!list) return answer(404, { error: `no room has the code ${parts[1]}` })
@@ -162,8 +163,9 @@ describe('claude-team-chat', () => {
       [
         `/chat join ${CODE}`,
         'Claude Code chat invite from ana: paste this whole message into Claude Code to join.',
-        'First time? Install the plugin once: /plugin install claude-team-chat --marketplace lovieco/claude-team-chat',
+        'New to it? Install: /plugin install claude-team-chat --marketplace lovieco/claude-team-chat',
         '(desktop app: + next to the prompt box > Plugins > Add marketplace lovieco/claude-team-chat > Add plugin)',
+        'Have it already? Get the latest: claude plugin update claude-team-chat@claude-team-chat, then restart Claude Code',
       ].join('\n'),
     )
     // a link works as the code too
@@ -390,6 +392,17 @@ describe('claude-team-chat', () => {
     await seen.clock.advance(1_500)
     expect(await noticeOf($)).toBe('')
     await ui.unmount()
+  })
+
+  test('an older copy of the plugin says a newer one is out, and how to update', { options: OPTIONS }, async ($, on) => {
+    fakeRelay(on, { version: '0.3.0' })
+    engine(on)
+    on('fs.read', () => ({ value: JSON.stringify({ name: 'claude-team-chat', version: '0.2.0' }) }))
+    await $.session.start(START)
+    await $.command.run(chat('who'))
+    expect(await noticeOf($)).toBe(
+      'A newer claude-team-chat (0.3.0) is out; you have 0.2.0. Update: claude plugin update claude-team-chat@claude-team-chat, then restart Claude Code.',
+    )
   })
 
   test('/chat stop stops hosting', { options: OPTIONS }, async ($, on) => {

@@ -1,6 +1,6 @@
 {
   "name": "claude-team-chat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Chat with other Claude Code users in rooms joined by a 4-character code: a chat pane, /chat, and tools Claude can use to read and send messages.",
   "types": "./types/index.d.ts",
   "userConfig": {
