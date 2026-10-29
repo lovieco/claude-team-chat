@@ -421,17 +421,14 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   return (
     <Box flexDirection="column" rowGap="xs">
       {where && (
-        <Box flexDirection="row">
-          <Box flexDirection="column" flexGrow={1} width={Math.max(24, (e.props.bodyColumns || 80) - 12)}>
-            <Input
-              key={`chat-reply-${count}`}
-              placeholder={lastFromOthers ? `Reply to ${lastFromOthers.from}…` : `Message room ${codeOf(where)}…`}
-              submitLabel="send"
-              autoFocus
-              onSubmit={value => void replyFromBar($, value, e.requestId, count)}
-            />
-          </Box>
-        </Box>
+        // Straight in the column, as the pane's own message box is: there it fills the row.
+        <Input
+          key={`chat-reply-${count}`}
+          placeholder={lastFromOthers ? `Reply to ${lastFromOthers.from}…` : `Message room ${codeOf(where)}…`}
+          submitLabel="send"
+          autoFocus
+          onSubmit={value => void replyFromBar($, value, e.requestId, count)}
+        />
       )}
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap={0}>
         {actions}
