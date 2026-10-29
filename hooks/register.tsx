@@ -10,6 +10,8 @@ const POLL_MS = 2000
 const RETRY_MS = 10_000
 const KEEP = 200
 const NOTICE_MS = 8000 // how long a notice above the bar stays
+// The menu's links in a graphical app: answered by the plugin, never opened (.invalid never resolves).
+const ACTION_LINK = 'https://claude-team-chat.invalid/'
 const CODE = /^[A-Za-z0-9]{4}$/ // a room on a relay run by hand: /chat join Ab3x <link>
 const MAIN = 'main' // the room every relay has; a hosted chat is this room
 const TUNNEL = /^[a-z0-9]+(?:-[a-z0-9]+)+$/ // a hosted chat's code: its tunnel's name
@@ -376,7 +378,9 @@ export const register: Register = (on, options) => {
 async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   const { Box, Button, Text } = $.ui.resolve(e)
   const [where, trouble] = await Promise.all([read($, room), read($, problem)])
-  // The actions, as the room stands.
+  // The actions, one per room state. In the terminal they are plain text buttons; a
+  // graphical app pads every button, so there they are one line of text whose words
+  // are links the plugin answers, a single space either side of each dot.
   const acts: { id: string; label: string; run: (surface: RenderSurface) => Promise<unknown> }[] = where
     ? [
         { id: 'open', label: 'Open chat', run: () => openPane($) },
@@ -386,18 +390,31 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
         { id: 'start', label: 'Start a new session', run: surface => startChat($, surface) },
       ]
     : [{ id: 'start', label: 'Start a new session', run: surface => startChat($, surface) }]
-  // Plain text, no link color. A graphical app pads each button about a space either
-  // side, so there the words alone are spaced right; the terminal draws them tight,
-  // so there dots with a space either side go between them.
-  const actions = acts.flatMap((act, i) => {
-    const link = (
-      <Button key={`chat-${act.id}`} plain onPress={press => void fromMenu($, () => act.run(press.surface))}>
-        <Text size="footnote">{act.label}</Text>
-      </Button>
-    )
-    if (i === 0 || e.surface !== 'terminal') return [link]
-    return [<Text key={`dot-${i}`} dimColor>{' · '}</Text>, link]
-  })
+  let actions
+  if (e.surface === 'terminal') {
+    actions = acts.flatMap((act, i) => {
+      const link = (
+        <Button key={`chat-${act.id}`} plain onPress={press => void fromMenu($, () => act.run(press.surface))}>
+          {act.label}
+        </Button>
+      )
+      return i === 0 ? [link] : [<Text key={`dot-${i}`} dimColor>{' · '}</Text>, link]
+    })
+  } else {
+    const { Markdown } = $.ui.resolve(e)
+    const hrefs = acts.map(act => `${ACTION_LINK}${act.id}`)
+    actions = [
+      <Markdown
+        key="chat-actions"
+        text={acts.map((act, i) => `[${act.label}](${hrefs[i]})`).join(' · ')}
+        pressableLinks={hrefs}
+        onLinkPress={(link, press) => {
+          const act = acts[hrefs.indexOf(link.href)]
+          if (act) void fromMenu($, () => act.run(press.surface))
+        }}
+      />,
+    ]
+  }
   if (e.surface === 'mobile') {
     return (
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" justifyContent="flex-end" columnGap={0}>
