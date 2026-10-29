@@ -313,6 +313,30 @@ describe('claude-team-chat', () => {
     expect((await $.command.run(chat('new'))).text).toBe('Hosting needs cloudflared: brew install cloudflared')
   })
 
+  test('the open bar has a reply box under the message: type, Enter, it sends', { options: OPTIONS }, async ($, on) => {
+    const relay = fakeRelay(on)
+    engine(on)
+    await $.session.start(START)
+    await $.command.run(chat(`join ${CODE}`))
+    relay.say('main', 'bo', 'iyiyim sen nasilsin')
+    await $.command.run(chat('who'))
+
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      await ui.press({ key: 'chat-bar' })
+      const field = await ui.find({ type: 'Input' })
+      expect(field?.key).toMatch(/^chat-reply-/)
+      expect(field?.props.placeholder).toBe('Reply to bo…')
+      await ui.input({ key: field!.key!, text: `fine, thanks (${surface})` })
+      expect(relay.posts.at(-1)?.body).toEqual({ from: 'ana', text: `fine, thanks (${surface})` })
+      // a fresh, empty box takes its place, and the menu stays open
+      expect((await ui.find({ type: 'Input' }))?.key).not.toBe(field!.key)
+      expect(await ui.find({ key: 'chat-open' })).toBeDefined()
+      await ui.press({ key: 'chat-bar' }) // close the menu for the next surface
+      await ui.unmount()
+    }
+  })
+
   test('notices show above the bar, close with ×, and clear after a few seconds', { options: OPTIONS }, async ($, on) => {
     fakeRelay(on)
     const seen = engine(on)

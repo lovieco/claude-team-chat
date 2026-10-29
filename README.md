@@ -93,6 +93,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 
 **The chat bar's menu:**
 
+- a **reply box** right under the latest message: click the bar, type, Enter
 - **Start a new session**: new room, invite copied, chat pane open (and hosting started if needed)
 - **Open chat** · **Copy invite** · **Who's here** · **Leave room**, then **Start a new session** last while you're in a room
 - a **Join** box when you're not in a room, and a box for a new relay link if yours stops answering

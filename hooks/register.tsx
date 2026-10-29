@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderInput, RenderSurface } from 'claude-code'
+import type { EngineInterface, Register, RenderInput, RenderSurface, UiPressArgument } from 'claude-code'
 
 import type { ChatMessage } from '../types'
 
@@ -372,20 +372,33 @@ export const register: Register = (on, options) => {
 async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   const { Box, Button, Text } = $.ui.resolve(e)
   const [where, trouble] = await Promise.all([read($, room), read($, problem)])
-  // One light row of actions, spaced evenly and wrapping on a narrow window. In a
+  // Small text links in one row, like the bar itself, with dots between them. In a
   // room, starting another is the rare choice, so it comes last.
-  const start = (
-    <Button key="chat-start" label="Start a new session" onPress={press => void fromMenu($, () => startChat($, press.surface))} />
+  const item = (key: string, label: string, onPress: (press: UiPressArgument) => void) => (
+    <Button key={key} plain onPress={onPress}>
+      <Text size="footnote">{label}</Text>
+    </Button>
   )
-  const actions = where
+  const start = item('chat-start', 'Start a new session', press => void fromMenu($, () => startChat($, press.surface)))
+  const links = where
     ? [
-        <Button key="chat-open" label="Open chat" onPress={() => void fromMenu($, () => openPane($))} />,
-        <Button key="chat-invite" label="Copy invite" onPress={press => void fromMenu($, () => copyInvite($, where, press.surface))} />,
-        <Button key="chat-who" label="Who's here" onPress={() => void fromMenu($, () => whoFromMenu($))} />,
-        <Button key="chat-leave" label="Leave room" onPress={() => void fromMenu($, () => leaveFromMenu($))} />,
+        item('chat-open', 'Open chat', () => void fromMenu($, () => openPane($))),
+        item('chat-invite', 'Copy invite', press => void fromMenu($, () => copyInvite($, where, press.surface))),
+        item('chat-who', "Who's here", () => void fromMenu($, () => whoFromMenu($))),
+        item('chat-leave', 'Leave room', () => void fromMenu($, () => leaveFromMenu($))),
         start,
       ]
     : [start]
+  const actions = links.flatMap((link, i) =>
+    i === 0
+      ? [link]
+      : [
+          <Text key={`dot-${i}`} dimColor size="footnote">
+            ·
+          </Text>,
+          link,
+        ],
+  )
   if (e.surface === 'mobile') {
     return (
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
@@ -394,8 +407,25 @@ async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
     )
   }
   const { Input } = $.ui.resolve(e)
+  // In a room, a reply box comes first, right under the message it answers: click
+  // the bar, type, Enter. A new key empties it after each send; the menu stays open.
+  const [list, count] = await Promise.all([read($, messages), read($, sent)])
+  const lastFromOthers = [...list].reverse().find(m => m.from !== config.me)
   return (
     <Box flexDirection="column" rowGap="xs">
+      {where && (
+        <Box flexDirection="row" alignItems="center">
+          <Box flexGrow={1}>
+            <Input
+              key={`chat-reply-${count}`}
+              placeholder={lastFromOthers ? `Reply to ${lastFromOthers.from}…` : `Message room ${codeOf(where)}…`}
+              submitLabel="send"
+              autoFocus
+              onSubmit={value => void replyFromBar($, value, e.requestId, count)}
+            />
+          </Box>
+        </Box>
+      )}
       <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap="sm">
         {actions}
         {!where && <Text dimColor>or</Text>}
@@ -441,6 +471,16 @@ async function composer($: $, e: RenderInput, where: string) {
       onSubmit={value => void submitFromPane($, value, count)}
     />
   )
+}
+
+async function replyFromBar($: $, value: string, site: string, count: number) {
+  try {
+    await sendMessage($, value)
+    await update($, sent, n => n + 1)
+    await $.ui.focus({ requestId: site, key: `chat-reply-${count + 1}` }).catch(() => {})
+  } catch (error) {
+    await say($, reasonOf(error))
+  }
 }
 
 async function submitFromPane($: $, value: string, count: number) {
