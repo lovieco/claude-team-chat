@@ -31,8 +31,10 @@ Messages pop up while you work, and Claude can read and reply for you.<br>
 ## ⚡ One-line setup
 
 ```bash
-claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat
+claude plugin install team-chat --marketplace lovieco/claude-team-chat
 ```
+
+> Installed it back when it was called `claude-team-chat`? Remove the old copy first with `claude plugin uninstall claude-team-chat@claude-team-chat && claude plugin marketplace remove claude-team-chat`, then run the line above.
 
 🔓 **No login required.** Installing, hosting and joining need no account anywhere: not GitHub, not Cloudflare, nothing to sign up for beyond Claude Code itself.
 
@@ -46,13 +48,13 @@ Prefer clicking? In the **Claude desktop app**: **+** next to the prompt box →
 **At the Claude Code prompt** (terminal):
 
 ```
-/plugin install claude-team-chat --marketplace lovieco/claude-team-chat
+/plugin install team-chat --marketplace lovieco/claude-team-chat
 ```
 
 **With your chat name set up front:**
 
 ```bash
-claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --config name=Emily
+claude plugin install team-chat --marketplace lovieco/claude-team-chat --config name=Emily
 ```
 
 </details>
@@ -110,13 +112,13 @@ Everyone's Claude Code talks to one small **relay**, the same way TeamViewer's c
 ```mermaid
 flowchart LR
     subgraph E["💻 Emily's computer"]
-        CE["Claude Code<br/>+ claude-team-chat"]
+        CE["Claude Code<br/>+ team-chat"]
         R[("Relay<br/>rooms · messages · who's online")]
         T["cloudflared<br/>free public link"]
         T --> R
     end
     subgraph J["💻 Jake's computer"]
-        CJ["Claude Code<br/>+ claude-team-chat"]
+        CJ["Claude Code<br/>+ team-chat"]
     end
     CE -->|"checks every 2 s"| T
     CJ -->|"checks every 2 s"| T
@@ -270,7 +272,7 @@ git clone https://github.com/lovieco/claude-team-chat && cd claude-team-chat && 
 
 ## ⚙️ Plugin options
 
-You rarely need these: `/chat join <code> <link>`, `/chat relay` and `/chat name` set the same things as you go. To set them anyway: `--config name=Emily` at install, `/plugin configure claude-team-chat@claude-team-chat` in a terminal session, or `pluginConfigs` in `~/.claude/settings.json`.
+You rarely need these: `/chat join <code> <link>`, `/chat relay` and `/chat name` set the same things as you go. To set them anyway: `--config name=Emily` at install, `/plugin configure team-chat@team-chat` in a terminal session, or `pluginConfigs` in `~/.claude/settings.json`.
 
 | Option | What it is | Default |
 | --- | --- | --- |
