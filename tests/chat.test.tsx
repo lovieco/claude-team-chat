@@ -215,6 +215,9 @@ describe('claude-team-chat', () => {
     expect((await ui.find({ key: 'chat-bar' }))?.text).toBe('chat Ab3x · 2 online ▾')
 
     await ui.press({ key: 'chat-bar' })
+    // in a room, Start a new session moves to the end of the menu
+    const order = (await ui.findAll({ type: 'Button' })).map(b => b.key).filter(k => k !== 'chat-bar')
+    expect(order).toEqual(['chat-open', 'chat-invite', 'chat-who', 'chat-leave', 'chat-start'])
     await ui.press({ key: 'chat-who' })
     expect(seen.toasts.at(-1)).toBe('Online in room Ab3x: ana, bo')
 
@@ -303,6 +306,25 @@ describe('claude-team-chat', () => {
 
     expect((await $.command.run(chat('stop'))).text).toContain('Stopped the relay and public link')
     expect(ran.at(-1)).toMatch(/host\.sh stop$/)
+  })
+
+  test('the latest messages show above the bar while the chat pane is closed', { options: OPTIONS }, async ($, on) => {
+    const relay = fakeRelay(on)
+    engine(on)
+    await $.session.start(START)
+    await $.command.run(chat('new'))
+    for (const text of ['one', 'two', 'three', 'four']) relay.say('Ab3x', 'bo', text)
+    await $.command.run(chat('who'))
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ text: /bo: one/ })).toBeUndefined()
+    for (const text of ['two', 'three', 'four']) expect(await ui.find({ text: new RegExp(`bo: ${text}$`) })).toBeDefined()
+    await ui.unmount()
+
+    await $.command.run(chat(''))
+    const withPane = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await withPane.find({ text: /bo: four/ })).toBeUndefined()
+    await withPane.unmount()
   })
 
   test('/chat name changes your name and keeps it unique in the room', { options: OPTIONS }, async ($, on) => {

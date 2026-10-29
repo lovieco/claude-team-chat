@@ -7,9 +7,9 @@
 One click starts a room. Friends join with a 4-character code.<br>
 Messages pop up while you work, and Claude can read and reply for you.
 
-<img src="docs/two-people.gif" width="860" alt="Emily and Jake chat in room 07xw from two computers; each message pops up on the other's screen">
+<img src="docs/two-people.gif" width="860" alt="Sahin and Jake chat in room 07xw from two computers; each message pops up on the other's screen">
 
-<sub>Animated illustration of the real chat pane, bar and popups.</sub>
+<sub>Animated illustration of the real chat pane, bar and popups.<br>A community plugin by <a href="https://github.com/lovieco">Lovie</a>, not made or endorsed by Anthropic.</sub>
 
 <br>
 
@@ -17,7 +17,7 @@ Messages pop up while you work, and Claude can read and reply for you.
 ![Relay with zero dependencies](https://img.shields.io/badge/relay-zero_dependencies-3B82F6?style=flat-square)
 ![Room codes](https://img.shields.io/badge/rooms-4--character_codes-6E56CF?style=flat-square)
 ![Free to host](https://img.shields.io/badge/hosting-free-2E8B57?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-16_passing-2E8B57?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-17_passing-2E8B57?style=flat-square)
 
 **[Install](#one-line-setup)** · **[First chat](#your-first-chat-in-30-seconds)** · **[How it works](#how-it-works)** · **[Commands](#commands)** · **[Hosting](#hosting)** · **[FAQ](#faq)**
 
@@ -51,8 +51,6 @@ Prefer clicking? In the **Claude desktop app**: **+** next to the prompt box →
 claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --config name=Emily
 ```
 
-**This repository is private.** It installs for people who can read it on GitHub and whose computer has a GitHub login for git (an SSH key, or `gh auth login` then `gh auth setup-git`). The install never asks for one.
-
 </details>
 
 ---
@@ -61,7 +59,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 ## 🚀 Your first chat in 30 seconds
 
 <div align="center">
-<img src="docs/start-session.gif" width="860" alt="Emily clicks the chat bar, presses Start a new session, the invite is copied and the chat pane opens; Jake joins">
+<img src="docs/start-session.gif" width="860" alt="Sahin clicks the chat bar, presses Start a new session, the invite is copied and the chat pane opens; Jake joins">
 </div>
 
 <br>
@@ -82,7 +80,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | --- | --- |
 | 🔔 **Popups** | New messages pop up wherever you are in Claude Code |
 | 🪟 **Chat pane** | `/chat` opens the room: messages, who's online, a box to type in, a Copy invite button |
-| 🎛️ **Chat bar** | Above the prompt: `chat 07xw · 2 online · 1 new ▾`. Click it for a menu |
+| 🎛️ **Chat bar** | Above the prompt: `chat 07xw · 2 online · 1 new ▾`, with the latest messages just above it. Click it for a menu |
 | 🤖 **Claude chats for you** | *"tell the room the deploy is out"*, *"what did Jake say?"* |
 | 🔑 **Rooms by code** | 4 characters, capitals matter (`K7pm` ≠ `k7pm`) |
 | 🏷️ **Your name** | `/chat name Emily`, kept for next time, unique in the room |
@@ -91,7 +89,7 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 **The chat bar's menu:**
 
 - **Start a new session**: new room, invite copied, chat pane open (and hosting started if needed)
-- **Open chat** · **Copy invite** · **Who's here** · **Leave room**
+- **Open chat** · **Copy invite** · **Who's here** · **Leave room**, then **Start a new session** last while you're in a room
 - a **Join** box when you're not in a room, and a box for a new relay link if yours stops answering
 
 ---
@@ -291,7 +289,7 @@ Yes. The plugin and relay are free, and Cloudflare's quick tunnels need no accou
 
 ```bash
 claude plugin validate .   # flags the claude- name prefix as reserved; installs still work
-claude plugin test .       # 16 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
+claude plugin test .       # 17 tests: rooms, codes, names, relays, hosting, invites, the bar and pane
 node server/relay.mjs      # run a relay by hand
 ```
 

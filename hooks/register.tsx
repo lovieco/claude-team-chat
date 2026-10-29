@@ -9,6 +9,7 @@ const PANE = 'claude-team-chat'
 const POLL_MS = 2000
 const RETRY_MS = 10_000
 const KEEP = 200
+const RECENT = 3 // messages shown above the chat bar
 const CODE = /^[A-Za-z0-9]{4}$/
 const NAME = /^[^\u0000-\u001f\u007f]{1,40}$/
 const NAME_COLORS = ['suggestion', 'success', 'warning', 'claude', 'permission', 'planMode', 'autoAccept', 'ide'] as const
@@ -248,9 +249,28 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const isMenu = await read($, menuOpen)
+    const [isMenu, where, list, isPaneOpen] = await Promise.all([
+      read($, menuOpen),
+      read($, room),
+      read($, messages),
+      read($, isOpen),
+    ])
+    // The latest messages above the bar, one line each, while the pane (which shows
+    // them all) is closed; as many as the band has rows for, up to three.
+    const fit = Math.min(RECENT, (e.props.maxRows || RECENT + 3) - 1 - (isMenu ? 2 : 0))
+    const recent = where && !isPaneOpen ? list.slice(-Math.max(0, fit)) : []
     return (
       <Box flexDirection="column">
+        {recent.map(m => (
+          <Text key={`recent-${m.id}`} wrap="truncate-end">
+            <Text dimColor>{clock(m.at)} </Text>
+            <Text bold color={colorFor(m.from)}>
+              {m.from}
+            </Text>
+            {m.via === 'claude' ? <Text dimColor> via Claude</Text> : null}
+            <Text>: {m.text}</Text>
+          </Text>
+        ))}
         <Button key="chat-bar" plain onPress={() => void update($, menuOpen, open => !open)}>
           {await barText($)} <Text dimColor>{isMenu ? '▴' : '▾'}</Text>
         </Button>
@@ -323,21 +343,22 @@ export const register: Register = (on, options) => {
 async function menuItems($: $, e: RenderInput<'AbovePrompt'>) {
   const { Box, Button } = $.ui.resolve(e)
   const [where, trouble] = await Promise.all([read($, room), read($, problem)])
+  // In a room, starting another one is the rare choice: last, and not the main action.
   const start = (
     <Button
       key="chat-start"
       label="Start a new session"
-      variant="primary"
+      variant={where ? 'secondary' : 'primary'}
       onPress={press => void fromMenu($, () => startChat($, press.surface))}
     />
   )
   const buttons = where ? (
     <Box>
-      {start}
-      <Button key="chat-open" label="Open chat" onPress={() => void fromMenu($, () => openPane($))} />
+      <Button key="chat-open" label="Open chat" variant="primary" onPress={() => void fromMenu($, () => openPane($))} />
       <Button key="chat-invite" label="Copy invite" onPress={press => void fromMenu($, () => copyInvite($, where, press.surface))} />
       <Button key="chat-who" label="Who's here" onPress={() => void fromMenu($, () => whoFromMenu($))} />
       <Button key="chat-leave" label="Leave room" onPress={() => void fromMenu($, () => leaveFromMenu($))} />
+      {start}
     </Box>
   ) : (
     <Box>{start}</Box>
