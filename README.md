@@ -5,7 +5,8 @@
 ### Chat with your team without leaving Claude Code.
 
 One click starts a chat. Friends join with its code, like <code>quiet-river-tall-moon</code>.<br>
-Messages pop up while you work, and Claude can read and reply for you.
+Messages pop up while you work, and Claude can read and reply for you.<br>
+<b>No login required:</b> no sign-up, no account, no server to rent.
 
 <img src="docs/two-people.gif" width="860" alt="Sahin and Jake chat in quiet-river-tall-moon from two computers; each message pops up on the other's screen">
 
@@ -16,10 +17,11 @@ Messages pop up while you work, and Claude can read and reply for you.
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-D97757?style=flat-square)
 ![Relay with zero dependencies](https://img.shields.io/badge/relay-zero_dependencies-3B82F6?style=flat-square)
 ![Join with one code](https://img.shields.io/badge/join-with_one_code-6E56CF?style=flat-square)
-![Free to host](https://img.shields.io/badge/hosting-free-2E8B57?style=flat-square)
+![No login required](https://img.shields.io/badge/login-not_required-2E8B57?style=flat-square)
+![Free to host](https://img.shields.io/badge/hosting-free_on_Cloudflare-F38020?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-16_passing-2E8B57?style=flat-square)
 
-**[Install](#one-line-setup)** · **[First chat](#your-first-chat-in-30-seconds)** · **[How it works](#how-it-works)** · **[Commands](#commands)** · **[Hosting](#hosting)** · **[FAQ](#faq)**
+**[Install](#one-line-setup)** · **[First chat](#your-first-chat-in-30-seconds)** · **[How it works](#how-it-works)** · **[Commands](#commands)** · **[Cloudflare](#cloudflare)** · **[Hosting](#hosting)** · **[FAQ](#faq)**
 
 </div>
 
@@ -31,6 +33,8 @@ Messages pop up while you work, and Claude can read and reply for you.
 ```bash
 claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat
 ```
+
+🔓 **No login required.** Installing, hosting and joining need no account anywhere: not GitHub, not Cloudflare, nothing to sign up for beyond Claude Code itself.
 
 Prefer clicking? In the **Claude desktop app**: **+** next to the prompt box → **Plugins** → **Add marketplace** `lovieco/claude-team-chat` → **Add plugin**.
 
@@ -84,7 +88,8 @@ claude plugin install claude-team-chat --marketplace lovieco/claude-team-chat --
 | 🤖 **Claude chats for you** | *"tell the room the deploy is out"*, *"what did Jake say?"* |
 | 🔑 **One code to join** | Four words like `quiet-river-tall-moon`: the name of the host's public link |
 | 🏷️ **Your name** | `/chat name Emily`, kept for next time, unique in the room |
-| 🛰️ **One-click hosting** | A relay and a free public link on your computer, nothing to sign up for |
+| 🛰️ **One-click hosting** | A relay and a free public link on your computer, through [Cloudflare](#cloudflare) |
+| 🔓 **No login required** | No accounts to make or sign in to, for the host or anyone joining |
 
 **The chat bar's menu:**
 
@@ -189,6 +194,37 @@ A hosted chat's code is the name Cloudflare gives its free public link: four ran
 
 ---
 
+<a id="cloudflare"></a>
+## ☁️ Cloudflare, and why there's no login
+
+Your friends' computers can't reach yours directly, so the host's relay borrows a public address from Cloudflare's free **[Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)**. The small `cloudflared` program on the host's computer opens an outgoing connection to Cloudflare, and Cloudflare gives it an address like `https://quiet-river-tall-moon.trycloudflare.com`. **The words in that address are your chat's code.**
+
+Quick Tunnels need **no Cloudflare account and no domain**, which is why nobody logs in to anything.
+
+**What travels where:** messages go over HTTPS to Cloudflare and through the tunnel to the host's computer. The relay keeps them there in memory only (the last 500 per room), and they're gone when it stops. This project stores nothing at Cloudflare or anywhere else.
+
+**What Cloudflare says about Quick Tunnels**, and what it means here:
+
+| Cloudflare's note | For your chat |
+| --- | --- |
+| Meant for testing and development, with no uptime guarantee | Great for team chats; not something to build a business on |
+| The address changes each time a tunnel is created, and stops when `cloudflared` stops | When the host's computer sleeps or restarts, the code changes: **Start a new session** and send the new one |
+| Up to 200 requests in flight at once | Plenty: each person's Claude Code checks in every 2 seconds with a quick request |
+| Anyone with the address can reach it | Share the code only with people you're chatting with |
+| Cloudflare WARP or a company's Zero Trust network can block it | If hosting fails on a work laptop, that's the likely reason |
+
+**Install `cloudflared`** (only the host needs it):
+
+| System | Command |
+| --- | --- |
+| macOS | `brew install cloudflared` |
+| Windows | `winget install --id Cloudflare.cloudflared` |
+| Linux | packages on [Cloudflare's downloads page](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) |
+
+**Want an address that never changes?** That's the one thing that needs a login: a free Cloudflare account with a named tunnel on your own domain, or any always-on server running `server/relay.mjs`. Then use `/chat relay <your address>` or the `server` option. See [Hosting](#hosting).
+
+---
+
 <a id="hosting"></a>
 ## 🛰️ Hosting
 
@@ -277,7 +313,16 @@ The code is wrong, or the host's public link stopped (usually because their comp
 
 <br>
 
-Yes. The plugin and relay are free, and Cloudflare's quick tunnels need no account.
+Yes. The plugin and relay are free, and Cloudflare's Quick Tunnels are free too.
+
+</details>
+
+<details>
+<summary><b>Do I need a Cloudflare account?</b></summary>
+
+<br>
+
+No. Quick Tunnels work without an account or a domain. You'd only need one for an address that never changes ([details](#cloudflare)).
 
 </details>
 
